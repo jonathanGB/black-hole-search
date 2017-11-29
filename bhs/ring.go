@@ -1,4 +1,4 @@
-package utils
+package bhs
 
 import (
 	"bytes"
@@ -12,6 +12,7 @@ type whiteboard struct {
 	sync.Map
 }
 
+// describes how to stringify the whiteboard
 func (wb *whiteboard) String() string {
 	var buffer bytes.Buffer
 	wb.Range(func(key, val interface{}) bool {
@@ -32,6 +33,10 @@ type Node struct {
 // Ring defines the structure of a Ring network
 type Ring []*Node
 
+// HOMEBASE is a helper index to index 0
+var HOMEBASE int
+
+// describes how to stringify the ring
 func (r Ring) String() string {
 	str := make([]string, 0, len(r)+1)
 	for _, n := range r {
