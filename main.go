@@ -11,6 +11,7 @@ func main() {
 	r, err := bhs.BuildRing(99, 100, false)
 	if err != nil {
 		fmt.Println(err)
+		return
 	}
 
 	//fmt.Print(r)
@@ -42,7 +43,7 @@ func optAvgTime(r bhs.Ring) {
 		// launch left agent
 		go func(i int, ch chan<- bool) {
 			leftAgent := bhs.NewAgent(r)
-			destination := (i - 1) % len(r)
+			destination := i - 1
 
 			if ok := leftAgent.LeftUntil(destination); !ok {
 				ch <- false

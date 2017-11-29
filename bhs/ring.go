@@ -16,7 +16,7 @@ type whiteboard struct {
 func (wb *whiteboard) String() string {
 	var buffer bytes.Buffer
 	wb.Range(func(key, val interface{}) bool {
-		buffer.WriteString(fmt.Sprintf("(%s => %s) ", key.(string), val.(string)))
+		buffer.WriteString(fmt.Sprintf("(%s => %s) ", key, val))
 		return true
 	})
 
@@ -61,8 +61,6 @@ func BuildRing(bhPos, len int, hasWhiteBoards bool) (Ring, error) {
 		var isBlackHole bool
 		if i == bhPos {
 			isBlackHole = true
-		} else {
-			isBlackHole = false
 		}
 
 		var wb *whiteboard
