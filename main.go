@@ -10,6 +10,9 @@ func main() {
 	var bhNodeID = optAvgTime(bhs.BuildRing(99, 100, false))
 	fmt.Printf("OptAvgTime found the black hole at index %d\n", bhNodeID)
 
+	bhNodeID = optTime(bhs.BuildRing(99, 100, false))
+	fmt.Printf("OptAvgTime using (n-1) agents found the black hole at index %d\n", bhNodeID)
+
 	bhNodeID = optTeamSize(bhs.BuildRing(99, 100, true))
 	fmt.Printf("OptTeamSize using 2 agents found the black hole at index %d\n", bhNodeID)
 }
@@ -56,6 +59,50 @@ func optAvgTime(ring bhs.Ring) (blackHoleID uint64) {
 				return
 			}
 
+			if ok := <-ch; !ok {
+				return
+			}
+
+			// both agents have returned true, alert the index of the black hole
+			blackHole <- i
+		}(i, results)
+	}
+
+	// wait for the black hole to be found
+	return <-blackHole
+}
+
+func optTime(ring bhs.Ring) (blachHoleNodeID uint64) {
+	var cautiousWalk = false
+	blackHole := make(chan uint64, 1) // channel to send the index, buffered to one
+
+	for i := uint64(1); i <= uint64(len(ring)); i++ {
+		results := make(chan bool, 1) // result from the agent
+
+		// launch left agent
+		go func(i uint64, ch chan<- bool) {
+			leftAgent := bhs.NewAgent(bhs.Left, ring, cautiousWalk)
+
+			if ok, _ := leftAgent.MoveUntil(bhs.Left, i-1); !ok { // go to the neighbour of i
+				ch <- false
+				return
+			}
+
+			if ok, _ := leftAgent.MoveUntil(bhs.Right, (i+1)%uint64(len(ring))); !ok { // go to the other neighbour or i
+				ch <- false
+				return
+			}
+
+			if ok, _ := leftAgent.MoveUntil(bhs.Left, leftAgent.HomebaseNodeIndex); !ok {
+				ch <- false
+				return
+			}
+
+			ch <- true
+		}(i, results)
+
+		// check for results from agents
+		go func(i uint64, ch <-chan bool) {
 			if ok := <-ch; !ok {
 				return
 			}
