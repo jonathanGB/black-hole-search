@@ -241,19 +241,22 @@ func group(ring bhs.Ring) uint64 {
 	groupSizes := [4]uint64{q, q, q + a, q - 1}
 	directions := [4]bhs.Direction{bhs.Left, bhs.Right, bhs.Left, bhs.Right}
 	blackhole := make(chan uint64, 1)
-	results := make(chan [3]uint64, n-1)
-	var previousTrigger *chan bool
+	results := make(chan []groupChannelResult, n-1)
+	var previousTrigger *chan groupChannelResponse
 
 	for groupIndex := uint64(1); groupIndex <= groupSizes[Middle]; groupIndex++ { // loop q+a times
-		currentTrigger := make(chan bool, 2)
+		currentTrigger := make(chan groupChannelResponse, 2)
 		for group := Left; group < 4; group++ {
 			if groupIndex > groupSizes[group] {
 				continue
 			}
-			go func(results chan<- [3]uint64, groupIndex uint64, group Group, iTrigger *chan bool, iPlus1Trigger chan bool) {
+			go func(results chan<- []groupChannelResult, groupIndex uint64, group Group, iTrigger *chan groupChannelResponse, iPlus1Trigger chan groupChannelResponse) {
+				var tieBreakerCaller groupChannelResponse
 				if group == TieBreaker {
-					if !<-iPlus1Trigger {
-						if !<-iPlus1Trigger {
+					tieBreakerCaller = <-iPlus1Trigger
+					if !tieBreakerCaller.success {
+						tieBreakerCaller = <-iPlus1Trigger
+						if !tieBreakerCaller.success {
 							return
 						}
 					}
@@ -265,7 +268,7 @@ func group(ring bhs.Ring) uint64 {
 				ok, _ := agent.MoveUntil(agent.Direction, destinations[0])
 				agent.MoveUntil(oppositeDirection, destinations[1])
 				if (group == Left || group == Right) && iTrigger != nil {
-					*iTrigger <- ok
+					*iTrigger <- groupChannelResponse{ok, groupChannelResult{agent.Direction, [2]uint64{destinations[0], destinations[1]}}}
 				}
 				if !ok {
 					return
@@ -277,20 +280,38 @@ func group(ring bhs.Ring) uint64 {
 					return
 				}
 
-				results <- [3]uint64{destinations[0], destinations[2], uint64(agent.Direction)}
+				result := []groupChannelResult{}
+				result = append(result, groupChannelResult{agent.Direction, [2]uint64{destinations[0], destinations[2]}})
+
+				if tieBreakerCaller.success {
+					result = append(result, tieBreakerCaller.result)
+				}
+
+				results <- result
 			}(results, groupIndex, group, previousTrigger, currentTrigger)
 		}
 
 		previousTrigger = &currentTrigger
 	}
 
-	go func(blackhole chan<- uint64, results <-chan [3]uint64) {
-		r1 := <-results
-		r2 := <-results
-		blackhole <- findMissing(r1, r2, n)
+	go func(blackhole chan<- uint64, results <-chan []groupChannelResult) {
+		result := []groupChannelResult{}
+		result = append(result, <-results...)
+		result = append(result, <-results...)
+		blackhole <- findMissing(result, n)
 	}(blackhole, results)
 
 	return <-blackhole
+}
+
+type groupChannelResult struct {
+	direction    bhs.Direction
+	visitedRange [2]uint64
+}
+
+type groupChannelResponse struct {
+	success bool
+	result  groupChannelResult
 }
 
 // Group is used for the alg GROUP
@@ -318,31 +339,26 @@ func destinations(group Group, n uint64, q uint64, a uint64, i uint64) [4]uint64
 	return [4]uint64{}
 }
 
-// computes
-func findMissing(visitedRange [3]uint64, visitedRange1 [3]uint64, n uint64) uint64 {
-	ranges := [4][2]uint64{}
-	ranges[0], ranges[1] = orderedRange(visitedRange, n)
-	ranges[2], ranges[3] = orderedRange(visitedRange1, n)
-
-	farthestLeft := max(ranges[0][1], ranges[2][1]) + 1
-	farthestRight := min(ranges[1][0], ranges[3][0]) - 1
-
-	missingValues := farthestRight - farthestLeft + 1
-
-	fmt.Printf("ranges: %d\t# missing values: %d\n", ranges, missingValues)
-
-	return farthestLeft
+func findMissing(visitedRange []groupChannelResult, n uint64) uint64 {
+	leftMost, rightMost := getLeftRightVisitedRanges(visitedRange, n)
+	countMissingValues := rightMost - 1 - leftMost + 1 - 1
+	fmt.Printf("ranges: %d\t# missing values: %d\n", [2][2]uint64{{0, leftMost}, {rightMost, n - 1}}, countMissingValues)
+	return leftMost + 1
 }
 
-// given the
-func orderedRange(visitedRange [3]uint64, n uint64) ([2]uint64, [2]uint64) {
-	direction := bhs.Direction(visitedRange[2])
-	var index = 0
-	switch direction {
-	case bhs.Right:
-		index = 1
+func getLeftRightVisitedRanges(visitedRange []groupChannelResult, n uint64) (uint64, uint64) {
+	minimum, maximum := n-1, uint64(0)
+	for i := uint64(0); i < uint64(len(visitedRange)); i++ {
+		var index = 0
+		switch visitedRange[i].direction {
+		case bhs.Right:
+			index = 1
+		}
+		r1, r2 := [2]uint64{0, visitedRange[i].visitedRange[index]}, [2]uint64{visitedRange[i].visitedRange[(1+index)%2], n - 1}
+		maximum = max(maximum, r1[1])
+		minimum = min(minimum, r2[0])
 	}
-	return [2]uint64{0, visitedRange[index]}, [2]uint64{visitedRange[(1+index)%2], n - 1}
+	return maximum, minimum
 }
 
 func min(a uint64, b uint64) uint64 {
