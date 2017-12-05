@@ -241,7 +241,7 @@ func group(ring bhs.Ring) uint64 {
 	groupSizes := [4]uint64{q, q, q + a, q - 1}
 	directions := [4]bhs.Direction{bhs.Left, bhs.Right, bhs.Left, bhs.Right}
 	blackhole := make(chan uint64, 1)
-	results := make(chan []groupChannelResult, n-1)
+	results := make(chan []groupChannelResponse, n-1)
 	var previousTrigger *chan groupChannelResponse
 
 	for groupIndex := uint64(1); groupIndex <= groupSizes[Middle]; groupIndex++ { // loop q+a times
@@ -250,7 +250,7 @@ func group(ring bhs.Ring) uint64 {
 			if groupIndex > groupSizes[group] {
 				continue
 			}
-			go func(results chan<- []groupChannelResult, groupIndex uint64, group Group, iTrigger *chan groupChannelResponse, iPlus1Trigger chan groupChannelResponse) {
+			go func(results chan<- []groupChannelResponse, groupIndex uint64, group Group, iTrigger *chan groupChannelResponse, iPlus1Trigger chan groupChannelResponse) {
 				var tieBreakerCaller groupChannelResponse
 				if group == TieBreaker {
 					tieBreakerCaller = <-iPlus1Trigger
@@ -264,6 +264,7 @@ func group(ring bhs.Ring) uint64 {
 				destinations := destinations(group, n, q, a, groupIndex)
 				agent := bhs.NewAgent(directions[group], ring, cautiousWalk)
 				oppositeDirection := (agent.Direction + 1) % (2)
+				result := []groupChannelResponse{}
 
 				ok, _ := agent.MoveUntil(agent.Direction, destinations[0])
 				agent.MoveUntil(oppositeDirection, destinations[1])
@@ -271,20 +272,19 @@ func group(ring bhs.Ring) uint64 {
 					*iTrigger <- groupChannelResponse{ok, groupChannelResult{agent.Direction, [2]uint64{destinations[0], destinations[1]}}}
 				}
 				if !ok {
+					results <- append(result, groupChannelResponse{false, groupChannelResult{}})
 					return
 				}
 				if ok, _ := agent.MoveUntil(oppositeDirection, destinations[2]); !ok {
+					results <- append(result, groupChannelResponse{false, groupChannelResult{}})
 					return
 				}
-				if ok, _ := agent.MoveUntil(agent.Direction, destinations[3]); !ok {
-					return
-				}
+				agent.MoveUntil(agent.Direction, destinations[3])
 
-				result := []groupChannelResult{}
-				result = append(result, groupChannelResult{agent.Direction, [2]uint64{destinations[0], destinations[2]}})
+				result = append(result, groupChannelResponse{true, groupChannelResult{agent.Direction, [2]uint64{destinations[0], destinations[2]}}})
 
 				if tieBreakerCaller.success {
-					result = append(result, tieBreakerCaller.result)
+					result = append(result, tieBreakerCaller)
 				}
 
 				results <- result
@@ -294,10 +294,18 @@ func group(ring bhs.Ring) uint64 {
 		previousTrigger = &currentTrigger
 	}
 
-	go func(blackhole chan<- uint64, results <-chan []groupChannelResult) {
+	// kinda cheating, because a trigger is used to notify that the agent isn't coming back, so we could technically know where the black hole is
+	go func(blackhole chan<- uint64, results <-chan []groupChannelResponse) {
 		result := []groupChannelResult{}
-		result = append(result, <-results...)
-		result = append(result, <-results...)
+		for i := uint64(0); i < n-1; i++ {
+			groupChannelResponses := <-results
+			for j := 0; j < len(groupChannelResponses); j++ {
+				if !groupChannelResponses[j].success {
+					continue
+				}
+				result = append(result, groupChannelResponses[j].result)
+			}
+		}
 		blackhole <- findMissing(result, n)
 	}(blackhole, results)
 
@@ -340,9 +348,9 @@ func destinations(group Group, n uint64, q uint64, a uint64, i uint64) [4]uint64
 }
 
 func findMissing(visitedRange []groupChannelResult, n uint64) uint64 {
-	leftMost, rightMost := getLeftRightVisitedRanges(visitedRange, n)
-	countMissingValues := rightMost - 1 - leftMost + 1 - 1
-	fmt.Printf("ranges: %d\t# missing values: %d\n", [2][2]uint64{{0, leftMost}, {rightMost, n - 1}}, countMissingValues)
+	leftMost, _ /*, rightMost*/ := getLeftRightVisitedRanges(visitedRange, n)
+	// countMissingValues := rightMost - 1 - leftMost + 1 - 1
+	// fmt.Printf("ranges: %d\t# missing values: %d\n", [2][2]uint64{{0, leftMost}, {rightMost, n - 1}}, countMissingValues)
 	return leftMost + 1
 }
 
