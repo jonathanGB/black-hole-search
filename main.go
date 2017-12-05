@@ -18,6 +18,9 @@ func main() {
 
 	bhNodeID = divide(bhs.BuildRing(80, 100, true))
 	fmt.Printf("Divide using 2 agents found the black hole at index %d\n", bhNodeID)
+
+	bhNodeID = group(bhs.BuildRing(1, 101, false))
+	fmt.Printf("Group using (n-1) agents found the black hole at index %d\n", bhNodeID)
 }
 
 // OptAvgTime runs the OptAvgTime algorithm
@@ -227,4 +230,131 @@ func equallyDivideUnexploredSet(direction bhs.Direction, unexploredSet [2]uint64
 	}
 
 	return [2]uint64{}, fmt.Errorf("no direction passed")
+}
+
+func group(ring bhs.Ring) uint64 {
+	const cautiousWalk = false
+	n := uint64(len(ring))
+	q := (n - 1) / 4
+	a := n - 4*q
+
+	groupSizes := [4]uint64{q, q, q + a, q - 1}
+	directions := [4]bhs.Direction{bhs.Left, bhs.Right, bhs.Left, bhs.Right}
+	blackhole := make(chan uint64, 1)
+	results := make(chan [3]uint64, n-1)
+	var previousTrigger *chan bool
+
+	for groupIndex := uint64(1); groupIndex <= groupSizes[Middle]; groupIndex++ { // loop q+a times
+		currentTrigger := make(chan bool, 2)
+		for group := Left; group < 4; group++ {
+			if groupIndex > groupSizes[group] {
+				continue
+			}
+			go func(results chan<- [3]uint64, groupIndex uint64, group Group, iTrigger *chan bool, iPlus1Trigger chan bool) {
+				if group == TieBreaker {
+					if !<-iPlus1Trigger {
+						if !<-iPlus1Trigger {
+							return
+						}
+					}
+				}
+				destinations := destinations(group, n, q, a, groupIndex)
+				agent := bhs.NewAgent(directions[group], ring, cautiousWalk)
+				oppositeDirection := (agent.Direction + 1) % (2)
+
+				ok, _ := agent.MoveUntil(agent.Direction, destinations[0])
+				agent.MoveUntil(oppositeDirection, destinations[1])
+				if (group == Left || group == Right) && iTrigger != nil {
+					*iTrigger <- ok
+				}
+				if !ok {
+					return
+				}
+				if ok, _ := agent.MoveUntil(oppositeDirection, destinations[2]); !ok {
+					return
+				}
+				if ok, _ := agent.MoveUntil(agent.Direction, destinations[3]); !ok {
+					return
+				}
+
+				results <- [3]uint64{destinations[0], destinations[2], uint64(agent.Direction)}
+			}(results, groupIndex, group, previousTrigger, currentTrigger)
+		}
+
+		previousTrigger = &currentTrigger
+	}
+
+	go func(blackhole chan<- uint64, results <-chan [3]uint64) {
+		r1 := <-results
+		r2 := <-results
+		blackhole <- findMissing(r1, r2, n)
+	}(blackhole, results)
+
+	return <-blackhole
+}
+
+// Group is used for the alg GROUP
+type Group uint8
+
+// Groups
+const (
+	Left Group = iota
+	Right
+	Middle
+	TieBreaker
+)
+
+func destinations(group Group, n uint64, q uint64, a uint64, i uint64) [4]uint64 {
+	switch group {
+	case Left:
+		return [4]uint64{i - 1, 0, i + q, 0}
+	case Right:
+		return [4]uint64{n - i + 1, 0, n - i - q - 1, 0}
+	case Middle:
+		return [4]uint64{q + i - 2, 0, 2*q + i - 1, 0}
+	case TieBreaker:
+		return [4]uint64{i + 1, 0, 0, 0}
+	}
+	return [4]uint64{}
+}
+
+// computes
+func findMissing(visitedRange [3]uint64, visitedRange1 [3]uint64, n uint64) uint64 {
+	ranges := [4][2]uint64{}
+	ranges[0], ranges[1] = orderedRange(visitedRange, n)
+	ranges[2], ranges[3] = orderedRange(visitedRange1, n)
+
+	farthestLeft := max(ranges[0][1], ranges[2][1]) + 1
+	farthestRight := min(ranges[1][0], ranges[3][0]) - 1
+
+	missingValues := farthestRight - farthestLeft + 1
+
+	fmt.Printf("ranges: %d\t# missing values: %d\n", ranges, missingValues)
+
+	return farthestLeft
+}
+
+// given the
+func orderedRange(visitedRange [3]uint64, n uint64) ([2]uint64, [2]uint64) {
+	direction := bhs.Direction(visitedRange[2])
+	var index = 0
+	switch direction {
+	case bhs.Right:
+		index = 1
+	}
+	return [2]uint64{0, visitedRange[index]}, [2]uint64{visitedRange[(1+index)%2], n - 1}
+}
+
+func min(a uint64, b uint64) uint64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a uint64, b uint64) uint64 {
+	if a < b {
+		return b
+	}
+	return a
 }
