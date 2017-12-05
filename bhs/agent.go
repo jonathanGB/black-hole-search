@@ -206,6 +206,20 @@ func (agent *Agent) LeaveUpdate(isLeftAgent bool) {
 	whiteboard.Unlock()
 }
 
+// LeaveUpdateDivide is used for updating the other agent during the divide algorithm
+func (agent *Agent) LeaveUpdateDivide() {
+	oppositeDirection := (agent.Direction + 1) % (2)
+	agent.MoveToLastExplored(oppositeDirection)
+
+	whiteboard := agent.Position.whiteboard
+	whiteboard.Lock()
+
+	whiteboard.updateForAgent = oppositeDirection
+	whiteboard.unexploredSet = agent.UnexploredSet
+
+	whiteboard.Unlock()
+}
+
 func exploreUpTo(isLeftAgent bool, unexploredSet [2]uint64) (nodeIndex uint64, err error) {
 	if unexploredSet[0] == unexploredSet[1] {
 		return unexploredSet[1], fmt.Errorf("only one node left to explore")

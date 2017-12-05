@@ -15,6 +15,9 @@ func main() {
 
 	bhNodeID = optTeamSize(bhs.BuildRing(99, 100, true))
 	fmt.Printf("OptTeamSize using 2 agents found the black hole at index %d\n", bhNodeID)
+
+	bhNodeID = divide(bhs.BuildRing(80, 100, true))
+	fmt.Printf("Divide using 2 agents found the black hole at index %d\n", bhNodeID)
 }
 
 // OptAvgTime runs the OptAvgTime algorithm
@@ -164,4 +167,64 @@ func optTeamSize(ring bhs.Ring) (blackHoleNodeID uint64) {
 	}(ch)
 
 	return <-blackHole
+}
+
+func divide(ring bhs.Ring) (blackHoleNodeID uint64) {
+	const cautiousWalk = true
+	blackhole := make(chan uint64, 1)
+	ch := make(chan bool, 2)
+
+	directions := [2]bhs.Direction{bhs.Left, bhs.Right}
+	for i := 0; i < len(directions); i++ {
+		go func(direction bhs.Direction, ch chan<- bool, blackhole chan<- uint64) {
+			agent := bhs.NewAgent(direction, ring, cautiousWalk)
+			agent.ActAsSmall = false // for update catching
+			agent.UnexploredSet = [2]uint64{1, uint64(len(agent.Ring) - 1)}
+
+			for agent.UnexploredSet[0] != agent.UnexploredSet[1] {
+				var destination uint64
+				var err error
+				var unexploredSet [2]uint64
+
+				if unexploredSet, err = equallyDivideUnexploredSet(agent.Direction, agent.UnexploredSet); err != nil {
+					return
+				}
+
+				switch agent.Direction {
+				case bhs.Left:
+					destination = unexploredSet[1]
+				case bhs.Right:
+					destination = unexploredSet[0]
+				}
+
+				ok, updateFound := agent.MoveUntil(agent.Direction, destination)
+				if !ok {
+					return
+				}
+
+				if updateFound {
+					continue
+				}
+
+				agent.LeaveUpdateDivide()
+			}
+
+			blackhole <- agent.UnexploredSet[0]
+
+		}(directions[i], ch, blackhole)
+	}
+
+	return <-blackhole
+}
+
+func equallyDivideUnexploredSet(direction bhs.Direction, unexploredSet [2]uint64) ([2]uint64, error) {
+	unexploredSetSize := unexploredSet[1] - unexploredSet[0] + 1
+	switch direction {
+	case bhs.Left:
+		return [2]uint64{unexploredSet[0], unexploredSet[0] - 1 + (unexploredSetSize / 2)}, nil
+	case bhs.Right:
+		return [2]uint64{unexploredSet[0] + (unexploredSetSize / 2), unexploredSet[1]}, nil
+	}
+
+	return [2]uint64{}, fmt.Errorf("no direction passed")
 }
