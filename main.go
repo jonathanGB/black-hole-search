@@ -19,8 +19,10 @@ func main() {
 	bhNodeID = divide(bhs.BuildRing(80, 100, true))
 	fmt.Printf("Divide using 2 agents found the black hole at index %d\n", bhNodeID)
 
-	bhNodeID = group(bhs.BuildRing(1, 101, false))
-	fmt.Printf("Group using (n-1) agents found the black hole at index %d\n", bhNodeID)
+	for i := uint64(1); i < 101; i++ {
+		bhNodeID = group(bhs.BuildRing(i, 101, false))
+		fmt.Printf("Group using (n-1) agents found the black hole at index %d\t(%d)\n", bhNodeID, i)
+	}
 }
 
 // OptAvgTime runs the OptAvgTime algorithm
@@ -261,9 +263,9 @@ func group(ring bhs.Ring) uint64 {
 						}
 					}
 				}
-				destinations := destinations(group, n, q, a, groupIndex)
+				destinations := getDestinations(group, n, q, a, groupIndex)
 				agent := bhs.NewAgent(directions[group], ring, cautiousWalk)
-				oppositeDirection := (agent.Direction + 1) % (2)
+				oppositeDirection := bhs.GetOppositeDirection(agent.Direction)
 				result := []groupChannelResponse{}
 
 				ok, _ := agent.MoveUntil(agent.Direction, destinations[0])
@@ -333,7 +335,7 @@ const (
 	TieBreaker
 )
 
-func destinations(group Group, n uint64, q uint64, a uint64, i uint64) [4]uint64 {
+func getDestinations(group Group, n uint64, q uint64, a uint64, i uint64) [4]uint64 {
 	switch group {
 	case Left:
 		return [4]uint64{i - 1, 0, i + q, 0}
@@ -348,23 +350,22 @@ func destinations(group Group, n uint64, q uint64, a uint64, i uint64) [4]uint64
 }
 
 func findMissing(visitedRange []groupChannelResult, n uint64) uint64 {
-	leftMost, _ /*, rightMost*/ := getLeftRightVisitedRanges(visitedRange, n)
+	/*leftMost*/ _, rightMost := getLeftRightVisitedRanges(visitedRange, n)
 	// countMissingValues := rightMost - 1 - leftMost + 1 - 1
-	// fmt.Printf("ranges: %d\t# missing values: %d\n", [2][2]uint64{{0, leftMost}, {rightMost, n - 1}}, countMissingValues)
-	return leftMost + 1
+	// fmt.Printf("ranges: %d\t# missing values: %d\n", [2][2]uint64{{0, leftMost}, {rightMost, n}}, countMissingValues)
+	return rightMost - 1
 }
 
 func getLeftRightVisitedRanges(visitedRange []groupChannelResult, n uint64) (uint64, uint64) {
-	minimum, maximum := n-1, uint64(0)
+	minimum, maximum := n, uint64(0)
 	for i := uint64(0); i < uint64(len(visitedRange)); i++ {
-		var index = 0
-		switch visitedRange[i].direction {
-		case bhs.Right:
-			index = 1
+		var index = visitedRange[i].direction
+		leftMostVisited, rightMostVisited := visitedRange[i].visitedRange[index], visitedRange[i].visitedRange[(1+index)%2]
+		if rightMostVisited == 0 {
+			rightMostVisited = n
 		}
-		r1, r2 := [2]uint64{0, visitedRange[i].visitedRange[index]}, [2]uint64{visitedRange[i].visitedRange[(1+index)%2], n - 1}
-		maximum = max(maximum, r1[1])
-		minimum = min(minimum, r2[0])
+		maximum = max(maximum, leftMostVisited)
+		minimum = min(minimum, rightMostVisited)
 	}
 	return maximum, minimum
 }

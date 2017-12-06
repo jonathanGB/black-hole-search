@@ -28,7 +28,7 @@ func (agent *Agent) Move(direction Direction) (updateFound bool, err error) {
 		return false, fmt.Errorf("non-active agent can't move")
 	}
 
-	oppositeDirection := (direction + 1) % (2)
+	oppositeDirection := GetOppositeDirection(direction)
 	var outgoingEdgeLabel ExploredType
 	var sourceNodeWhiteboard *Whiteboard
 
@@ -208,7 +208,7 @@ func (agent *Agent) LeaveUpdate(isLeftAgent bool) {
 
 // LeaveUpdateDivide is used for updating the other agent during the divide algorithm
 func (agent *Agent) LeaveUpdateDivide() {
-	oppositeDirection := (agent.Direction + 1) % (2)
+	oppositeDirection := GetOppositeDirection(agent.Direction)
 	agent.MoveToLastExplored(oppositeDirection)
 
 	whiteboard := agent.Position.whiteboard
@@ -266,4 +266,9 @@ func (agent *Agent) checkForUpdate() bool {
 
 	whiteboard.Unlock()
 	return true
+}
+
+// GetOppositeDirection is self-explanatory
+func GetOppositeDirection(direction Direction) (oppositeDirection Direction) {
+	return (direction + 1) % (2)
 }
