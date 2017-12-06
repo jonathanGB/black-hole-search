@@ -330,7 +330,7 @@ func getDestinations(group Group, n uint64, q uint64, a uint64, i uint64) [4]uin
 	case Right:
 		return [4]uint64{n - i + 1, 0, n - i - q - 1, 0}
 	case Middle:
-		return [4]uint64{q + i - 2, 0, 2*q + i - 1, 0}
+		return [4]uint64{q + i - 2, 0, 2*q + i, 0}
 	case TieBreaker:
 		return [4]uint64{i + 1, 0, 0, 0}
 	}
@@ -340,7 +340,7 @@ func getDestinations(group Group, n uint64, q uint64, a uint64, i uint64) [4]uin
 func findMissing(visitedRange []groupChannelResult, n uint64) uint64 {
 	/*leftMost*/ _, rightMost := getLeftRightVisitedRanges(visitedRange, n)
 	// countMissingValues := rightMost - 1 - leftMost + 1 - 1
-	// fmt.Printf("ranges: %d\t# missing values: %d\n", [2][2]uint64{{0, leftMost}, {rightMost, n}}, countMissingValues)
+	// fmt.Printf("Unexplored set: [%d, %d]\t# missing values: %d\n", leftMost, rightMost, countMissingValues)
 	return rightMost - 1
 }
 
