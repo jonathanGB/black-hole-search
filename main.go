@@ -19,10 +19,8 @@ func main() {
 	bhNodeID = divide(bhs.BuildRing(80, 100, true))
 	fmt.Printf("Divide using 2 agents found the black hole at index %d\n", bhNodeID)
 
-	for i := uint64(1); i < 101; i++ {
-		bhNodeID = group(bhs.BuildRing(i, 101, false))
-		fmt.Printf("Group using (n-1) agents found the black hole at index %d\t(%d)\n", bhNodeID, i)
-	}
+	bhNodeID = group(bhs.BuildRing(100, 101, false))
+	fmt.Printf("Group using (n-1) agents found the black hole at index %d\n", bhNodeID)
 }
 
 // OptAvgTime runs the OptAvgTime algorithm
@@ -244,7 +242,7 @@ func group(ring bhs.Ring) uint64 {
 	directions := [4]bhs.Direction{bhs.Left, bhs.Right, bhs.Left, bhs.Right}
 	blackhole := make(chan uint64, 1)
 	results := make(chan groupChannelResponse, n-1)
-	var previousTrigger *chan bool
+	var previousTrigger chan bool
 
 	for groupIndex := uint64(1); groupIndex <= groupSizes[Middle]; groupIndex++ { // loop q+a times
 		currentTrigger := make(chan bool, 2)
@@ -252,7 +250,7 @@ func group(ring bhs.Ring) uint64 {
 			if groupIndex > groupSizes[group] {
 				continue
 			}
-			go func(results chan<- groupChannelResponse, groupIndex uint64, group Group, iTrigger *chan bool, iPlus1Trigger chan bool) {
+			go func(results chan<- groupChannelResponse, groupIndex uint64, group Group, iTrigger chan bool, iPlus1Trigger chan bool) {
 				if group == TieBreaker {
 					if !<-iPlus1Trigger {
 						if !<-iPlus1Trigger {
@@ -267,7 +265,7 @@ func group(ring bhs.Ring) uint64 {
 				ok, _ := agent.MoveUntil(agent.Direction, destinations[0])
 				agent.MoveUntil(oppositeDirection, destinations[1])
 				if (group == Left || group == Right) && iTrigger != nil {
-					*iTrigger <- ok
+					iTrigger <- ok
 				}
 				if !ok {
 					results <- groupChannelResponse{false, groupChannelResult{}}
@@ -283,7 +281,7 @@ func group(ring bhs.Ring) uint64 {
 			}(results, groupIndex, group, previousTrigger, currentTrigger)
 		}
 
-		previousTrigger = &currentTrigger
+		previousTrigger = currentTrigger
 	}
 
 	// kinda cheating, because a trigger is used to notify that the agent isn't coming back, so we could technically know where the black hole is
