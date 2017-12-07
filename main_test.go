@@ -41,3 +41,12 @@ func benchmarkDivide(i uint64, b *testing.B) {
 	}
 }
 func BenchmarkDivide10000(b *testing.B) { benchmarkDivide(1000, b) }
+
+func benchmarkGroup(i uint64, b *testing.B) {
+	r := bhs.BuildRing(i-1, i, true)
+
+	for n := 0; n < b.N; n++ {
+		group(r)
+	}
+}
+func BenchmarkGroup10000(b *testing.B) { benchmarkGroup(1000, b) }
