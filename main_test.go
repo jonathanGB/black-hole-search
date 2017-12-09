@@ -6,13 +6,11 @@ import (
 	"./bhs"
 )
 
-type bhsAlgo func(r bhs.Ring) bhs.NodeID
+func runTest(hasWhiteBoards bool, algo func(r bhs.Ring) bhs.NodeID, t *testing.T) {
+	var size uint64 = 100
 
-func runTest(algo bhsAlgo, t *testing.T) {
-	var size bhs.NodeID = 100
-
-	for i := bhs.NodeID(1); i < size; i++ {
-		r := bhs.BuildRing(i, uint64(size), false)
+	for i := bhs.NodeID(1); i < bhs.NodeID(size); i++ {
+		r := bhs.BuildRing(i, size, hasWhiteBoards)
 
 		if result := algo(r); result != i {
 			t.Errorf("Expected %v, got %d", i, result)
@@ -21,7 +19,7 @@ func runTest(algo bhsAlgo, t *testing.T) {
 }
 
 func TestOptAvgTime(t *testing.T) {
-	runTest(optAvgTime, t)
+	runTest(false, optAvgTime, t)
 }
 
 func benchmarkOptAvgTime(i uint64, b *testing.B) {
@@ -34,7 +32,7 @@ func benchmarkOptAvgTime(i uint64, b *testing.B) {
 func BenchmarkOptAvgTime10000(b *testing.B) { benchmarkOptAvgTime(1000, b) }
 
 func TestOptTime(t *testing.T) {
-	runTest(optTime, t)
+	runTest(false, optTime, t)
 }
 
 func benchmarkOptTime(i uint64, b *testing.B) {
@@ -47,7 +45,7 @@ func benchmarkOptTime(i uint64, b *testing.B) {
 func BenchmarkOptTime10000(b *testing.B) { benchmarkOptTime(1000, b) }
 
 func TestOptTeamSize(t *testing.T) {
-	runTest(optTeamSize, t)
+	runTest(true, optTeamSize, t)
 }
 
 func benchmarkOptTeamSize(i uint64, b *testing.B) {
@@ -60,7 +58,7 @@ func benchmarkOptTeamSize(i uint64, b *testing.B) {
 func BenchmarkOptTeamSize10000(b *testing.B) { benchmarkOptTeamSize(1000, b) }
 
 func TestDivide(t *testing.T) {
-	runTest(divide, t)
+	runTest(true, divide, t)
 }
 
 func benchmarkDivide(i uint64, b *testing.B) {
@@ -73,7 +71,7 @@ func benchmarkDivide(i uint64, b *testing.B) {
 func BenchmarkDivide10000(b *testing.B) { benchmarkDivide(1000, b) }
 
 func TestGroup(t *testing.T) {
-	runTest(group, t)
+	runTest(false, group, t)
 }
 
 func benchmarkGroup(i uint64, b *testing.B) {
