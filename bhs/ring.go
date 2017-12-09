@@ -1,75 +1,83 @@
 package bhs
 
 import (
-	"bytes"
-	"fmt"
-	"strings"
 	"sync"
 )
 
-// whiteboard is an abstraction of the sync.Map structure
-type whiteboard struct {
-	sync.Map
+// Whiteboard is an abstraction of the sync.Map structure
+type Whiteboard struct {
+	sync.Mutex
+	label          [2]ExploredType
+	updateForAgent Direction
+	unexploredSet  [2]NodeID
+	actAsSmall     bool
+	homebaseNodeID NodeID
 }
 
-// describes how to stringify the whiteboard
-func (wb *whiteboard) String() string {
-	var buffer bytes.Buffer
-	wb.Range(func(key, val interface{}) bool {
-		buffer.WriteString(fmt.Sprintf("(%s => %s) ", key, val))
-		return true
-	})
+// ExploredType is used for cautious walk for edge labels
+type ExploredType uint8
 
-	return buffer.String()
-}
+// Direction is used for left and right
+type Direction uint8
+
+// NodeID ...
+type NodeID uint64
+
+// Directions
+const (
+	Left  Direction = iota // 0
+	Right                  // 1
+	None  = 100
+)
+
+// ring edge labels (for cautious walk)
+const (
+	unexplored ExploredType = iota // 0
+	active                         // 1
+	explored                       // 2
+)
 
 // Node contains the information of a node, as well helper functions to navigate through Nodes
 type Node struct {
-	Bh bool
-	ID int
-	wb *whiteboard
+	BlackHole  bool
+	ID         NodeID
+	whiteboard *Whiteboard
 }
 
 // Ring defines the structure of a Ring network
 type Ring []*Node
 
-// HOMEBASE is a helper index to index 0
-var HOMEBASE int
-
-// describes how to stringify the ring
-func (r Ring) String() string {
-	str := make([]string, 0, len(r)+1)
-	for _, n := range r {
-		str = append(str, fmt.Sprintf("{ ID: %d | Black hole: %t | Whiteboard: %s}\n", n.ID, n.Bh, n.wb))
-	}
-	str = append(str, "\n")
-
-	return strings.Join(str, "")
-}
-
 // BuildRing creates a Ring network made of Nodes
 // Requires the position of the black hole, the number of nodes, and whether Nodes should include whiteboards
 // The ring is returned with an error if the black hole position is out of obunds
-func BuildRing(bhPos, len int, hasWhiteBoards bool) (Ring, error) {
-	if bhPos < 0 || bhPos >= len {
-		return nil, fmt.Errorf("position of black hole is out of bounds")
+func BuildRing(blackHoleID NodeID, len uint64, hasWhiteBoards bool) Ring {
+	ringSize := NodeID(len) // logically wrong, but needed for type correctness
+	if 0 > blackHoleID || blackHoleID >= ringSize {
+		return nil
 	}
 
-	r := make([]*Node, 0, len)
+	ring := make([]*Node, 0, ringSize)
 
-	for i := 0; i < len; i++ {
+	for id := NodeID(0); id < ringSize; id++ {
 		var isBlackHole bool
-		if i == bhPos {
+		if id == blackHoleID {
 			isBlackHole = true
 		}
 
-		var wb *whiteboard
+		var whiteboard *Whiteboard
 		if hasWhiteBoards {
-			wb = &whiteboard{}
+			whiteboard = &Whiteboard{label: [2]ExploredType{unexplored, unexplored}, updateForAgent: None}
+
+			// set edge label to explored for the links to the homebase
+			if id == 1 {
+				whiteboard.label[Right] = explored // overwrite
+			} else if id == ringSize-1 {
+				whiteboard.label[Left] = explored // overwrite
+			}
 		}
 
-		r = append(r, &Node{isBlackHole, i, wb})
+		ring = append(ring, &Node{isBlackHole, id, whiteboard})
 	}
 
-	return r, nil
+	return ring
 }
