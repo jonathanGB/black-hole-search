@@ -4,22 +4,22 @@ import "fmt"
 
 // Agent is an abstraction of agents that move around the ring
 type Agent struct {
-	Direction         Direction
-	Position          *Node
-	Ring              Ring
-	Active            bool
-	Moves             uint64
-	cautiousWalk      bool
-	UnexploredSet     [2]uint64
-	ActAsSmall        bool
-	HomebaseNodeIndex uint64
+	Direction      Direction
+	Position       *Node
+	Ring           Ring
+	Active         bool
+	Moves          uint64
+	cautiousWalk   bool
+	UnexploredSet  [2]NodeID
+	ActAsSmall     bool
+	HomebaseNodeID NodeID
 }
 
 // NewAgent helps construct an agent
 func NewAgent(direction Direction, ring Ring, cautiousWalk bool) *Agent {
-	unexploredSet := [2]uint64{1, uint64(len(ring) - 1)}
-	homebaseNodeIndex := uint64(0)
-	return &Agent{direction, ring[homebaseNodeIndex], ring, true, 0, cautiousWalk, unexploredSet, true, homebaseNodeIndex}
+	unexploredSet := [2]NodeID{1, NodeID(len(ring) - 1)}
+	homebaseNodeID := NodeID(0)
+	return &Agent{direction, ring[homebaseNodeID], ring, true, 0, cautiousWalk, unexploredSet, true, homebaseNodeID}
 }
 
 // Move combines logic for moving left and right
@@ -28,7 +28,7 @@ func (agent *Agent) Move(direction Direction) (updateFound bool, err error) {
 		return false, fmt.Errorf("non-active agent can't move")
 	}
 
-	oppositeDirection := (direction + 1) % (2)
+	oppositeDirection := GetOppositeDirection(direction)
 	var outgoingEdgeLabel ExploredType
 	var sourceNodeWhiteboard *Whiteboard
 
@@ -69,7 +69,7 @@ func (agent *Agent) Move(direction Direction) (updateFound bool, err error) {
 	destinationSourceWhiteboard.Unlock()
 
 	// Update agent's unexplored set with node just visited
-	switch agent.Position.Index {
+	switch agent.Position.ID {
 	case agent.UnexploredSet[1]:
 		agent.UnexploredSet[1]-- // if the agent is located at the rightmost unexplored node, decrement the index of the rightmost unexplored node
 	case agent.UnexploredSet[0]:
@@ -100,8 +100,8 @@ func (agent *Agent) Move(direction Direction) (updateFound bool, err error) {
 
 // MoveUntil moves agent to the direction specified until it reaches a given index
 // Returns true if made it alive to the destination, otherwise false
-func (agent *Agent) MoveUntil(direction Direction, i uint64) (successul bool, updateFound bool) {
-	for agent.Position.Index != i {
+func (agent *Agent) MoveUntil(direction Direction, id NodeID) (successul bool, updateFound bool) {
+	for agent.Position.ID != id {
 		updateFound, err := agent.Move(direction)
 		if err != nil || updateFound {
 			return err == nil, updateFound
@@ -121,7 +121,7 @@ func (agent *Agent) MoveToLastExplored(direction Direction) bool {
 }
 
 // Small is used for optTeamSize
-func (agent *Agent) Small(isLeftAgent bool, remainingIterationsAsSmall uint8, blackHole chan<- uint64) {
+func (agent *Agent) Small(isLeftAgent bool, remainingIterationsAsSmall uint8, blackHole chan<- NodeID) {
 	var nodeToExplore, err = exploreUpTo(isLeftAgent, agent.UnexploredSet)
 	if err != nil {
 
@@ -130,7 +130,7 @@ func (agent *Agent) Small(isLeftAgent bool, remainingIterationsAsSmall uint8, bl
 		if ok, _ := agent.MoveUntil(Left, nodeToExplore); !ok { // visit one node
 			return
 		}
-		agent.MoveUntil(Right, agent.HomebaseNodeIndex)
+		agent.MoveUntil(Right, agent.HomebaseNodeID)
 		if agent.UnexploredSet[0] == agent.UnexploredSet[1] {
 			blackHole <- agent.UnexploredSet[1]
 			return
@@ -139,7 +139,7 @@ func (agent *Agent) Small(isLeftAgent bool, remainingIterationsAsSmall uint8, bl
 		if ok, _ := agent.MoveUntil(Right, agent.UnexploredSet[1]); !ok {
 			return
 		}
-		agent.MoveUntil(Left, agent.HomebaseNodeIndex)
+		agent.MoveUntil(Left, agent.HomebaseNodeID)
 		if agent.UnexploredSet[0] == agent.UnexploredSet[1] {
 			blackHole <- agent.UnexploredSet[1]
 			return
@@ -159,7 +159,7 @@ func (agent *Agent) Small(isLeftAgent bool, remainingIterationsAsSmall uint8, bl
 }
 
 // Big is used for optTeamSize
-func (agent *Agent) Big(isLeftAgent bool, blackHole chan<- uint64) {
+func (agent *Agent) Big(isLeftAgent bool, blackHole chan<- NodeID) {
 	const cautiousWalk = true
 	if isLeftAgent {
 		ok, updateFound := agent.MoveUntil(Left, agent.UnexploredSet[1]-1) // visit all but one unexplored nodes
@@ -167,7 +167,7 @@ func (agent *Agent) Big(isLeftAgent bool, blackHole chan<- uint64) {
 			return
 		}
 		if !updateFound {
-			agent.MoveUntil(Right, agent.HomebaseNodeIndex) // return home
+			agent.MoveUntil(Right, agent.HomebaseNodeID) // return home
 		}
 		agent.Small(isLeftAgent, 2, blackHole)
 	} else {
@@ -176,7 +176,7 @@ func (agent *Agent) Big(isLeftAgent bool, blackHole chan<- uint64) {
 			return
 		}
 		if !updateFound {
-			agent.MoveUntil(Left, agent.HomebaseNodeIndex) // return home
+			agent.MoveUntil(Left, agent.HomebaseNodeID) // return home
 		}
 		agent.Small(isLeftAgent, 2, blackHole)
 	}
@@ -200,7 +200,10 @@ func (agent *Agent) LeaveUpdate(isLeftAgent bool) {
 	whiteboard.updateForAgent = direction
 	whiteboard.actAsSmall = !agent.ActAsSmall
 	// getting the halfway point of the unexplored set, then finding the node halfway around the ring from it should be the center of the explored set
-	whiteboard.homebaseNodeIndex = (uint64(len(agent.Ring)/2) + (agent.UnexploredSet[1]-agent.UnexploredSet[0])/2) % uint64(len(agent.Ring))
+	// cannot do negative modulo, because NodeID is an unsigned integer
+	ringSize := NodeID(len(agent.Ring) / 2)
+	middleOfUnexploredSetNodeID := (agent.UnexploredSet[1] - agent.UnexploredSet[0]) / 2
+	whiteboard.homebaseNodeID = (ringSize + middleOfUnexploredSetNodeID) % ringSize
 	whiteboard.unexploredSet = agent.UnexploredSet
 
 	whiteboard.Unlock()
@@ -208,7 +211,7 @@ func (agent *Agent) LeaveUpdate(isLeftAgent bool) {
 
 // LeaveUpdateDivide is used for updating the other agent during the divide algorithm
 func (agent *Agent) LeaveUpdateDivide() {
-	oppositeDirection := (agent.Direction + 1) % (2)
+	oppositeDirection := GetOppositeDirection(agent.Direction)
 	agent.MoveToLastExplored(oppositeDirection)
 
 	whiteboard := agent.Position.whiteboard
@@ -220,7 +223,7 @@ func (agent *Agent) LeaveUpdateDivide() {
 	whiteboard.Unlock()
 }
 
-func exploreUpTo(isLeftAgent bool, unexploredSet [2]uint64) (nodeIndex uint64, err error) {
+func exploreUpTo(isLeftAgent bool, unexploredSet [2]NodeID) (nodeIndex NodeID, err error) {
 	if unexploredSet[0] == unexploredSet[1] {
 		return unexploredSet[1], fmt.Errorf("only one node left to explore")
 	}
@@ -231,15 +234,15 @@ func exploreUpTo(isLeftAgent bool, unexploredSet [2]uint64) (nodeIndex uint64, e
 	return unexploredSet[1], nil
 }
 
-func (agent *Agent) getNewIndex(direction Direction) uint64 {
-	newIndex := agent.Position.Index
+func (agent *Agent) getNewIndex(direction Direction) NodeID {
+	newID := agent.Position.ID
 	if direction == Right {
-		newIndex += uint64(len(agent.Ring)) - 1 // go around the ring to previous node
+		newID += NodeID(len(agent.Ring)) - 1 // go around the ring to previous node
 	} else if direction == Left {
-		newIndex++ // go to next node
+		newID++ // go to next node
 	}
-	newIndex = newIndex % uint64(len(agent.Ring))
-	return newIndex
+	newID = newID % NodeID(len(agent.Ring))
+	return newID
 }
 
 func (agent *Agent) checkForUpdate() bool {
@@ -250,7 +253,7 @@ func (agent *Agent) checkForUpdate() bool {
 	whiteboard := agent.Position.whiteboard
 
 	whiteboard.Lock()
-	if whiteboard.unexploredSet == [2]uint64{} || agent.Direction != whiteboard.updateForAgent {
+	if whiteboard.unexploredSet == [2]NodeID{} || agent.Direction != whiteboard.updateForAgent {
 		whiteboard.Unlock()
 		return false
 	}
@@ -258,12 +261,17 @@ func (agent *Agent) checkForUpdate() bool {
 	// store updates
 	agent.ActAsSmall = whiteboard.actAsSmall
 	agent.UnexploredSet = whiteboard.unexploredSet
-	agent.HomebaseNodeIndex = whiteboard.homebaseNodeIndex
+	agent.HomebaseNodeID = whiteboard.homebaseNodeID
 
 	// erase unexplored set as an indicator that update was read
-	whiteboard.unexploredSet = [2]uint64{}
+	whiteboard.unexploredSet = [2]NodeID{}
 	whiteboard.updateForAgent = None
 
 	whiteboard.Unlock()
 	return true
+}
+
+// GetOppositeDirection is self-explanatory
+func GetOppositeDirection(direction Direction) (oppositeDirection Direction) {
+	return (direction + 1) % 2
 }
