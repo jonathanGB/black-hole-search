@@ -201,7 +201,9 @@ func (agent *Agent) LeaveUpdate(isLeftAgent bool) {
 	whiteboard.actAsSmall = !agent.ActAsSmall
 	// getting the halfway point of the unexplored set, then finding the node halfway around the ring from it should be the center of the explored set
 	// cannot do negative modulo, because NodeID is an unsigned integer
-	whiteboard.homebaseNodeID = (NodeID(len(agent.Ring)/2) + (agent.UnexploredSet[1]-agent.UnexploredSet[0])/2) % NodeID(len(agent.Ring))
+	ringSize := NodeID(len(agent.Ring) / 2)
+	middleOfUnexploredSetNodeID := (agent.UnexploredSet[1] - agent.UnexploredSet[0]) / 2
+	whiteboard.homebaseNodeID = (ringSize + middleOfUnexploredSetNodeID) % ringSize
 	whiteboard.unexploredSet = agent.UnexploredSet
 
 	whiteboard.Unlock()
