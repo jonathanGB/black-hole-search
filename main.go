@@ -189,18 +189,7 @@ func divide(ring bhs.Ring) (blackHoleNodeID bhs.NodeID) {
 			agent.UnexploredSet = [2]bhs.NodeID{1, ringSize - 1}
 
 			for agent.UnexploredSet[0] != agent.UnexploredSet[1] {
-				var destination bhs.NodeID
-				var unexploredSet [2]bhs.NodeID
-
-				unexploredSet = equallyDivideUnexploredSet(agent.Direction, agent.UnexploredSet)
-
-				switch agent.Direction {
-				case bhs.Left:
-					destination = unexploredSet[1]
-				case bhs.Right:
-					destination = unexploredSet[0]
-				}
-
+				destination := equallyDivideUnexploredSet(agent.Direction, agent.UnexploredSet)
 				ok, updateFound := agent.MoveUntil(agent.Direction, destination)
 				if !ok {
 					return
@@ -221,13 +210,13 @@ func divide(ring bhs.Ring) (blackHoleNodeID bhs.NodeID) {
 	return <-blackhole
 }
 
-func equallyDivideUnexploredSet(direction bhs.Direction, unexploredSet [2]bhs.NodeID) [2]bhs.NodeID {
+func equallyDivideUnexploredSet(direction bhs.Direction, unexploredSet [2]bhs.NodeID) bhs.NodeID {
 	unexploredSetSize := unexploredSet[1] - unexploredSet[0] + 1
 	if direction == bhs.Right {
-		return [2]bhs.NodeID{unexploredSet[0] + (unexploredSetSize / 2), unexploredSet[1]}
+		return unexploredSet[0] + (unexploredSetSize / 2)
 	}
 	// else if bhs.Left
-	return [2]bhs.NodeID{unexploredSet[0], unexploredSet[0] - 1 + (unexploredSetSize / 2)}
+	return unexploredSet[0] - 1 + (unexploredSetSize / 2)
 }
 
 func group(ring bhs.Ring) bhs.NodeID {
