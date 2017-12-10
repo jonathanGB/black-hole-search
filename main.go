@@ -32,33 +32,21 @@ func optAvgTime(ring bhs.Ring) (blackHoleID bhs.NodeID) {
 	for id := bhs.NodeID(1); id < ringSize; id++ {
 		results := make(chan bool, 2) // results from left and right agent
 
-		// launch right agent
-		go func(id bhs.NodeID, ch chan<- bool) {
-			rightAgent := bhs.NewAgent(bhs.Right, ring, cautiousWalk)
-			destination := (id + 1) % ringSize
+		directions := [2]bhs.Direction{bhs.Left, bhs.Right}
+		destinations := [2]bhs.NodeID{id - 1, (1 + id) % ringSize}
+		for i := 0; i < len(directions); i++ {
+			go func(destination bhs.NodeID, ch chan<- bool, direction bhs.Direction) {
+				agent := bhs.NewAgent(direction, ring, cautiousWalk)
 
-			if ok, _ := rightAgent.MoveUntil(bhs.Right, destination); !ok {
-				ch <- false
-				return
-			}
+				if ok, _ := agent.MoveUntil(agent.Direction, destination); !ok {
+					ch <- false
+					return
+				}
 
-			ok, _ := rightAgent.MoveUntil(bhs.Left, rightAgent.HomebaseNodeID)
-			ch <- ok
-		}(id, results)
-
-		// launch left agent
-		go func(id bhs.NodeID, ch chan<- bool) {
-			leftAgent := bhs.NewAgent(bhs.Left, ring, cautiousWalk)
-			destination := id - 1
-
-			if ok, _ := leftAgent.MoveUntil(bhs.Left, destination); !ok {
-				ch <- false
-				return
-			}
-
-			ok, _ := leftAgent.MoveUntil(bhs.Right, leftAgent.HomebaseNodeID)
-			ch <- ok
-		}(id, results)
+				ok, _ := agent.MoveUntil(bhs.GetOppositeDirection(agent.Direction), agent.HomebaseNodeID)
+				ch <- ok
+			}(destinations[i], results, directions[i])
+		}
 
 		// check for results from left and right agents
 		go func(id bhs.NodeID, ch <-chan bool) {
