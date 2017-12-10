@@ -199,9 +199,12 @@ func divide(ring bhs.Ring) (blackHoleNodeID bhs.NodeID) {
 					continue
 				}
 
-				agent.LeaveUpdateDivide()
+				if agent.UnexploredSet[0] != agent.UnexploredSet[1] { // if other agent falls in the black hole, update useless
+					agent.LeaveUpdateDivide()
+				}
 			}
 
+			agent.MoveUntil(bhs.GetOppositeDirection(agent.Direction), 0) // go to homebase
 			blackhole <- agent.UnexploredSet[0]
 
 		}(directions[i], ch, blackhole)

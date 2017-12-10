@@ -36,6 +36,10 @@ func (agent *Agent) Move(direction Direction) (updateFound bool, err error) {
 	if agent.cautiousWalk {
 		sourceNodeWhiteboard = agent.Position.whiteboard
 		sourceNodeWhiteboard.Lock()
+		if agent.checkForUpdate() { // always check for an update before moving
+			sourceNodeWhiteboard.Unlock()
+			return true, nil
+		}
 		outgoingEdgeLabel = sourceNodeWhiteboard.label[direction]
 		switch outgoingEdgeLabel {
 		case unexplored:
@@ -60,8 +64,6 @@ func (agent *Agent) Move(direction Direction) (updateFound bool, err error) {
 		return
 	}
 
-	updateFound = agent.checkForUpdate() // always check for an update before marking an edge label as explored
-
 	// Arrived at destination, mark incoming edge label as explored
 	destinationSourceWhiteboard := agent.Position.whiteboard
 	destinationSourceWhiteboard.Lock()
@@ -77,22 +79,17 @@ func (agent *Agent) Move(direction Direction) (updateFound bool, err error) {
 	}
 
 	if outgoingEdgeLabel != unexplored { // Stop here unless agent needs to go back to mark outgoing label as explored
-		return updateFound, nil
+		return false, nil
 	}
 
 	// go back to source to mark its outgoing edge label as explored and check for new instructions
-	if uF, err := agent.Move(oppositeDirection); err != nil {
-		return uF, err
-	}
-
-	// If no update is found, keep going
-	if updateFound {
-		return updateFound, nil // TODO: in parent
+	if updateFound, err := agent.Move(oppositeDirection); err != nil || updateFound {
+		return updateFound, err
 	}
 
 	// otherwise, keep doing your thing
-	if uF, err := agent.Move(direction); err != nil {
-		return uF, err
+	if updateFound, err := agent.Move(direction); err != nil || updateFound {
+		return updateFound, err
 	}
 
 	return false, nil // successful, nothing to declare
@@ -112,10 +109,13 @@ func (agent *Agent) MoveUntil(direction Direction, id NodeID) (successul bool, u
 
 // MoveToLastExplored is used for cautious walk
 func (agent *Agent) MoveToLastExplored(direction Direction) bool {
+	agent.Position.whiteboard.Lock()
 	for agent.Position.whiteboard.label[direction] == explored {
+		agent.Position.whiteboard.Unlock()
 		if _, err := agent.Move(direction); err != nil {
 			return false
 		}
+		agent.Position.whiteboard.Lock()
 	}
 	return true
 }
@@ -195,7 +195,7 @@ func (agent *Agent) LeaveUpdate(isLeftAgent bool) {
 	agent.MoveToLastExplored(direction)
 
 	whiteboard := agent.Position.whiteboard
-	whiteboard.Lock()
+	// whiteboard.Lock() ALREADY LOCKED FROM PREVIOUS METHOD CALL
 
 	whiteboard.updateForAgent = direction
 	whiteboard.actAsSmall = !agent.ActAsSmall
@@ -215,7 +215,7 @@ func (agent *Agent) LeaveUpdateDivide() {
 	agent.MoveToLastExplored(oppositeDirection)
 
 	whiteboard := agent.Position.whiteboard
-	whiteboard.Lock()
+	// whiteboard.Lock() ALREADY LOCKED FROM PREVIOUS METHOD CALL
 
 	whiteboard.updateForAgent = oppositeDirection
 	whiteboard.unexploredSet = agent.UnexploredSet
@@ -252,9 +252,7 @@ func (agent *Agent) checkForUpdate() bool {
 
 	whiteboard := agent.Position.whiteboard
 
-	whiteboard.Lock()
 	if whiteboard.unexploredSet == [2]NodeID{} || agent.Direction != whiteboard.updateForAgent {
-		whiteboard.Unlock()
 		return false
 	}
 
@@ -267,7 +265,6 @@ func (agent *Agent) checkForUpdate() bool {
 	whiteboard.unexploredSet = [2]NodeID{}
 	whiteboard.updateForAgent = None
 
-	whiteboard.Unlock()
 	return true
 }
 
