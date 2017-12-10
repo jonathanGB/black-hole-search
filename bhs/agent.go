@@ -146,7 +146,7 @@ func (agent *Agent) Small(isLeftAgent bool, remainingIterationsAsSmall uint8, bl
 		}
 	}
 
-	agent.LeaveUpdate(isLeftAgent)
+	agent.LeaveUpdate()
 
 	remainingIterationsAsSmall--
 	switch remainingIterationsAsSmall {
@@ -185,19 +185,14 @@ func (agent *Agent) Big(isLeftAgent bool, blackHole chan<- NodeID) {
 }
 
 // LeaveUpdate is used for optTeamSize
-func (agent *Agent) LeaveUpdate(isLeftAgent bool) {
-	var direction Direction
-	if isLeftAgent {
-		direction = Right
-	} else {
-		direction = Left
-	}
-	agent.MoveToLastExplored(direction)
+func (agent *Agent) LeaveUpdate() {
+	oppositeDirection := GetOppositeDirection(agent.Direction)
+	agent.MoveToLastExplored(oppositeDirection)
 
 	whiteboard := agent.Position.whiteboard
 	// whiteboard.Lock() ALREADY LOCKED FROM PREVIOUS METHOD CALL
 
-	whiteboard.updateForAgent = direction
+	whiteboard.updateForAgent = oppositeDirection
 	whiteboard.actAsSmall = !agent.ActAsSmall
 	// getting the halfway point of the unexplored set, then finding the node halfway around the ring from it should be the center of the explored set
 	// cannot do negative modulo, because NodeID is an unsigned integer
