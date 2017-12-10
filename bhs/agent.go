@@ -99,8 +99,7 @@ func (agent *Agent) Move(direction Direction) (updateFound bool, err error) {
 // Returns true if made it alive to the destination, otherwise false
 func (agent *Agent) MoveUntil(direction Direction, id NodeID) (successul bool, updateFound bool) {
 	for agent.Position.ID != id {
-		updateFound, err := agent.Move(direction)
-		if err != nil || updateFound {
+		if updateFound, err := agent.Move(direction); err != nil || updateFound {
 			return err == nil, updateFound
 		}
 	}
@@ -108,84 +107,59 @@ func (agent *Agent) MoveUntil(direction Direction, id NodeID) (successul bool, u
 }
 
 // MoveToLastExplored is used for cautious walk
-func (agent *Agent) MoveToLastExplored(direction Direction) bool {
+func (agent *Agent) MoveToLastExplored(direction Direction) {
 	agent.Position.whiteboard.Lock()
 	for agent.Position.whiteboard.label[direction] == explored {
 		agent.Position.whiteboard.Unlock()
-		if _, err := agent.Move(direction); err != nil {
-			return false
-		}
+		agent.Move(direction)
 		agent.Position.whiteboard.Lock()
 	}
-	return true
 }
 
 // Small is used for optTeamSize
-func (agent *Agent) Small(isLeftAgent bool, remainingIterationsAsSmall uint8, blackHole chan<- NodeID) {
-	var nodeToExplore, err = exploreUpTo(isLeftAgent, agent.UnexploredSet)
-	if err != nil {
-
+func (agent *Agent) Small(remainingIterationsAsSmall uint8, blackHole chan<- NodeID) {
+	if ok, _ := agent.MoveUntil(agent.Direction, agent.UnexploredSet[agent.Direction]); !ok { // visit one node
+		return // fell in black hole
 	}
-	if isLeftAgent {
-		if ok, _ := agent.MoveUntil(Left, nodeToExplore); !ok { // visit one node
-			return
-		}
-		agent.MoveUntil(Right, agent.HomebaseNodeID)
-		if agent.UnexploredSet[0] == agent.UnexploredSet[1] {
-			blackHole <- agent.UnexploredSet[1]
-			return
-		}
-	} else {
-		if ok, _ := agent.MoveUntil(Right, agent.UnexploredSet[1]); !ok {
-			return
-		}
-		agent.MoveUntil(Left, agent.HomebaseNodeID)
-		if agent.UnexploredSet[0] == agent.UnexploredSet[1] {
-			blackHole <- agent.UnexploredSet[1]
-			return
-		}
-	}
-
-	agent.LeaveUpdate()
+	agent.MoveUntil(GetOppositeDirection(agent.Direction), agent.HomebaseNodeID)
 
 	remainingIterationsAsSmall--
+	agent.LeaveUpdate(remainingIterationsAsSmall)
+
+	if agent.UnexploredSet[0] == agent.UnexploredSet[1] {
+		blackHole <- agent.UnexploredSet[1]
+		return // found black hole
+	}
+
 	switch remainingIterationsAsSmall {
 	case 1:
-		agent.Small(isLeftAgent, remainingIterationsAsSmall, blackHole)
+		agent.Small(1, blackHole)
 	case 0:
-		agent.Big(isLeftAgent, blackHole)
+		agent.Big(blackHole)
 	}
-	return
 }
 
 // Big is used for optTeamSize
-func (agent *Agent) Big(isLeftAgent bool, blackHole chan<- NodeID) {
-	const cautiousWalk = true
-	if isLeftAgent {
-		ok, updateFound := agent.MoveUntil(Left, agent.UnexploredSet[1]-1) // visit all but one unexplored nodes
-		if !ok {
-			return
-		}
-		if !updateFound {
-			agent.MoveUntil(Right, agent.HomebaseNodeID) // return home
-		}
-		agent.Small(isLeftAgent, 2, blackHole)
-	} else {
-		ok, updateFound := agent.MoveUntil(Right, agent.UnexploredSet[0]+1) // visit all but one unexplored nodes
-		if !ok {
-			return
-		}
-		if !updateFound {
-			agent.MoveUntil(Left, agent.HomebaseNodeID) // return home
-		}
-		agent.Small(isLeftAgent, 2, blackHole)
+func (agent *Agent) Big(blackHole chan<- NodeID) {
+	destination := [2]NodeID{agent.UnexploredSet[1] - 1, agent.UnexploredSet[0] + 1}  // Left and Right destinations
+	ok, updateFound := agent.MoveUntil(agent.Direction, destination[agent.Direction]) // visit all but one unexplored nodes
+	if !ok {
+		return
 	}
-	blackHole <- agent.UnexploredSet[1]
-	return
+	if !updateFound {
+		agent.MoveUntil(GetOppositeDirection(agent.Direction), agent.HomebaseNodeID) // return home
+		blackHole <- agent.UnexploredSet[1]
+		return
+	}
+	if agent.ActAsSmall {
+		agent.Small(2, blackHole)
+		return
+	}
+	agent.Big(blackHole)
 }
 
 // LeaveUpdate is used for optTeamSize
-func (agent *Agent) LeaveUpdate() {
+func (agent *Agent) LeaveUpdate(remainingIterationsAsSmall uint8) {
 	oppositeDirection := GetOppositeDirection(agent.Direction)
 	agent.MoveToLastExplored(oppositeDirection)
 
@@ -193,7 +167,10 @@ func (agent *Agent) LeaveUpdate() {
 	// whiteboard.Lock() ALREADY LOCKED FROM PREVIOUS METHOD CALL
 
 	whiteboard.updateForAgent = oppositeDirection
-	whiteboard.actAsSmall = !agent.ActAsSmall
+	if remainingIterationsAsSmall == 0 {
+		whiteboard.actAsSmall = agent.ActAsSmall
+		agent.ActAsSmall = !agent.ActAsSmall
+	}
 	// getting the halfway point of the unexplored set, then finding the node halfway around the ring from it should be the center of the explored set
 	// cannot do negative modulo, because NodeID is an unsigned integer
 	ringSize := NodeID(len(agent.Ring) / 2)
@@ -216,17 +193,6 @@ func (agent *Agent) LeaveUpdateDivide() {
 	whiteboard.unexploredSet = agent.UnexploredSet
 
 	whiteboard.Unlock()
-}
-
-func exploreUpTo(isLeftAgent bool, unexploredSet [2]NodeID) (nodeIndex NodeID, err error) {
-	if unexploredSet[0] == unexploredSet[1] {
-		return unexploredSet[1], fmt.Errorf("only one node left to explore")
-	}
-
-	if isLeftAgent {
-		return unexploredSet[0], nil
-	}
-	return unexploredSet[1], nil
 }
 
 func (agent *Agent) getNewIndex(direction Direction) NodeID {

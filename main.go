@@ -131,35 +131,40 @@ func optTeamSize(ring bhs.Ring) (blackHoleNodeID bhs.NodeID) {
 	ringSize := bhs.NodeID(len(ring))     // logically wrong, but needed for type correctness
 	phaseOneNodesToExplore := (ringSize - 1) / 2
 
-	// launch right agent
-	go func(ch chan<- bool, blackHole chan<- bhs.NodeID) {
-		rightAgent := bhs.NewAgent(bhs.Right, ring, cautiousWalk)
+	directions := [2]bhs.Direction{bhs.Left, bhs.Right}
+	phaseOneDestinations := [2]bhs.NodeID{phaseOneNodesToExplore, ringSize - phaseOneNodesToExplore}
+	for i := 0; i < len(directions); i++ {
+		go func(direction bhs.Direction, destination bhs.NodeID, ch chan<- bool, blackHole chan<- bhs.NodeID) {
+			agent := bhs.NewAgent(direction, ring, cautiousWalk)
+			agent.ActAsSmall = false
 
-		if ok, _ := rightAgent.MoveUntil(bhs.Right, ringSize-phaseOneNodesToExplore); !ok {
-			return
-		}
+			ok, updateFound := agent.MoveUntil(agent.Direction, destination)
+			if !ok {
+				return
+			}
+			// if agent reaches this point, then returning to homebase will be successful unless update found
+			if updateFound {
+				if agent.ActAsSmall {
+					agent.Small(2, blackHole)
+					return
+				}
+				agent.Big(blackHole)
+			}
+			ok, updateFound = agent.MoveUntil(bhs.GetOppositeDirection(agent.Direction), agent.HomebaseNodeID)
+			ch <- ok
+			if updateFound {
+				if agent.ActAsSmall {
+					agent.Small(2, blackHole)
+					return
+				}
+				agent.Big(blackHole)
+			}
+			agent.LeaveUpdate(2)
+			agent.ActAsSmall = true
+			agent.Small(2, blackHole)
 
-		ok, _ := rightAgent.MoveUntil(bhs.Left, rightAgent.HomebaseNodeID)
-		ch <- ok
-		rightAgent.ActAsSmall = true
-		rightAgent.LeaveUpdate(false)
-		rightAgent.Small(false, 2, blackHole)
-	}(ch, blackHole)
-
-	// launch left agent
-	go func(ch chan<- bool, blackHole chan<- bhs.NodeID) {
-		leftAgent := bhs.NewAgent(bhs.Left, ring, cautiousWalk)
-
-		if ok, _ := leftAgent.MoveUntil(bhs.Left, phaseOneNodesToExplore); !ok {
-			return
-		}
-
-		ok, _ := leftAgent.MoveUntil(bhs.Right, leftAgent.HomebaseNodeID)
-		ch <- ok
-		leftAgent.ActAsSmall = true
-		leftAgent.LeaveUpdate(true)
-		leftAgent.Small(true, 2, blackHole)
-	}(ch, blackHole)
+		}(directions[i], phaseOneDestinations[i], ch, blackHole)
+	}
 
 	// only works if both agents come back
 	go func(ch <-chan bool) {
