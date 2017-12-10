@@ -97,7 +97,7 @@ func (agent *Agent) Move(direction Direction) (updateFound bool, err error) {
 
 // MoveUntil moves agent to the direction specified until it reaches a given index
 // Returns true if made it alive to the destination, otherwise false
-func (agent *Agent) MoveUntil(direction Direction, id NodeID) (successul bool, updateFound bool) {
+func (agent *Agent) MoveUntil(direction Direction, id NodeID) (bool, bool) {
 	for agent.Position.ID != id {
 		if updateFound, err := agent.Move(direction); err != nil || updateFound {
 			return err == nil, updateFound

@@ -7,67 +7,78 @@ import (
 )
 
 func main() {
-	var bhNodeID = optAvgTime(bhs.BuildRing(99, 100, false))
-	fmt.Printf("OptAvgTime found the black hole at index %d\n", bhNodeID)
+	bhNodeID, totalMoves, idealTime := optAvgTime(bhs.BuildRing(99, 100, false))
+	fmt.Printf("OptAvgTime found the black hole at index %d\n\tIdeal time: %d\tTotal moves: %d\n", bhNodeID, idealTime, totalMoves)
 
-	bhNodeID = optTime(bhs.BuildRing(99, 100, false))
+	bhNodeID, _, _ = optTime(bhs.BuildRing(99, 100, false))
 	fmt.Printf("OptAvgTime using (n-1) agents found the black hole at index %d\n", bhNodeID)
 
-	bhNodeID = optTeamSize(bhs.BuildRing(99, 100, true))
+	bhNodeID, _, _ = optTeamSize(bhs.BuildRing(99, 100, true))
 	fmt.Printf("OptTeamSize using 2 agents found the black hole at index %d\n", bhNodeID)
 
-	bhNodeID = divide(bhs.BuildRing(80, 100, true))
+	bhNodeID, _, _ = divide(bhs.BuildRing(80, 100, true))
 	fmt.Printf("Divide using 2 agents found the black hole at index %d\n", bhNodeID)
 
-	bhNodeID = group(bhs.BuildRing(100, 101, false))
+	bhNodeID, _, _ = group(bhs.BuildRing(100, 101, false))
 	fmt.Printf("Group using (n-1) agents found the black hole at index %d\n", bhNodeID)
 }
 
 // OptAvgTime runs the OptAvgTime algorithm
-func optAvgTime(ring bhs.Ring) (blackHoleID bhs.NodeID) {
+func optAvgTime(ring bhs.Ring) (bhs.NodeID, uint64, uint64) {
 	const cautiousWalk = false
 	blackHole := make(chan bhs.NodeID, 1) // channel to send the index, buffered to one
-	ringSize := bhs.NodeID(len(ring))     // logically wrong, but needed for type correctness
+	totalMoves := make(chan uint64, 2*(len(ring)-1))
+	idealTime := make(chan uint64, 1)
+	ringSize := bhs.NodeID(len(ring)) // logically wrong, but needed for type correctness
 
 	for id := bhs.NodeID(1); id < ringSize; id++ {
-		results := make(chan bool, 2) // results from left and right agent
+		oks := make(chan bool, 2) // results from left and right agent
+		moves := make(chan uint64, 2)
 
 		directions := [2]bhs.Direction{bhs.Left, bhs.Right}
 		destinations := [2]bhs.NodeID{id - 1, (1 + id) % ringSize}
 		for i := 0; i < len(directions); i++ {
-			go func(destination bhs.NodeID, ch chan<- bool, direction bhs.Direction) {
+			go func(destination bhs.NodeID, oks chan<- bool, moves chan<- uint64, direction bhs.Direction) {
 				agent := bhs.NewAgent(direction, ring, cautiousWalk)
 
 				if ok, _ := agent.MoveUntil(agent.Direction, destination); !ok {
-					ch <- false
+					oks <- false
+					totalMoves <- agent.Moves
 					return
 				}
 
 				ok, _ := agent.MoveUntil(bhs.GetOppositeDirection(agent.Direction), agent.HomebaseNodeID)
-				ch <- ok
-			}(destinations[i], results, directions[i])
+				oks <- ok
+				moves <- agent.Moves
+				totalMoves <- agent.Moves
+			}(destinations[i], oks, moves, directions[i])
 		}
 
 		// check for results from left and right agents
-		go func(id bhs.NodeID, ch <-chan bool) {
-			if ok := <-ch; !ok {
+		go func(id bhs.NodeID, oks <-chan bool, results <-chan uint64) {
+			if ok := <-oks; !ok {
 				return
 			}
 
-			if ok := <-ch; !ok {
+			if ok := <-oks; !ok {
 				return
 			}
 
 			// both agents have returned true, alert the index of the black hole
 			blackHole <- id
-		}(id, results)
+			idealTime <- maxUint64(<-results, <-results)
+		}(id, oks, moves)
 	}
 
+	var sumMoves uint64
+	for i := 1; i < len(ring); i++ {
+		sumMoves += <-totalMoves + <-totalMoves
+	}
 	// wait for the black hole to be found
-	return <-blackHole
+	return <-blackHole, sumMoves, <-idealTime
 }
 
-func optTime(ring bhs.Ring) (blachHoleNodeID bhs.NodeID) {
+func optTime(ring bhs.Ring) (bhs.NodeID, uint64, uint64) {
 	const cautiousWalk = false
 	ringSize := bhs.NodeID(len(ring))     // logically wrong, but needed for type correctness
 	blackHole := make(chan bhs.NodeID, 1) // channel to send the index, buffered to one
@@ -109,10 +120,10 @@ func optTime(ring bhs.Ring) (blachHoleNodeID bhs.NodeID) {
 	}
 
 	// wait for the black hole to be found
-	return <-blackHole
+	return <-blackHole, 0, 0 // TODO CHANGE LAST 2 RETURN VALUE
 }
 
-func optTeamSize(ring bhs.Ring) (blackHoleNodeID bhs.NodeID) {
+func optTeamSize(ring bhs.Ring) (bhs.NodeID, uint64, uint64) {
 	const cautiousWalk = true
 	blackHole := make(chan bhs.NodeID, 1) // channel to send the index, buffered to one
 	ch := make(chan bool, 2)              // channel to send if both agents return successfully
@@ -165,10 +176,10 @@ func optTeamSize(ring bhs.Ring) (blackHoleNodeID bhs.NodeID) {
 		blackHole <- phaseOneNodesToExplore + 1
 	}(ch)
 
-	return <-blackHole
+	return <-blackHole, 0, 0 // TODO CHANGE LAST 2 RETURN VALUE
 }
 
-func divide(ring bhs.Ring) (blackHoleNodeID bhs.NodeID) {
+func divide(ring bhs.Ring) (bhs.NodeID, uint64, uint64) {
 	const cautiousWalk = true
 	blackhole := make(chan bhs.NodeID, 1)
 	ch := make(chan bool, 2)
@@ -203,7 +214,7 @@ func divide(ring bhs.Ring) (blackHoleNodeID bhs.NodeID) {
 		}(directions[i], ch, blackhole)
 	}
 
-	return <-blackhole
+	return <-blackhole, 0, 0 // TODO CHANGE LAST 2 RETURN VALUE
 }
 
 func equallyDivideUnexploredSet(direction bhs.Direction, unexploredSet [2]bhs.NodeID) bhs.NodeID {
@@ -215,7 +226,7 @@ func equallyDivideUnexploredSet(direction bhs.Direction, unexploredSet [2]bhs.No
 	return unexploredSet[0] - 1 + (unexploredSetSize / 2)
 }
 
-func group(ring bhs.Ring) bhs.NodeID {
+func group(ring bhs.Ring) (bhs.NodeID, uint64, uint64) {
 	const cautiousWalk = false
 	n := uint64(len(ring))
 	q := (n - 1) / 4
@@ -281,7 +292,7 @@ func group(ring bhs.Ring) bhs.NodeID {
 		blackhole <- findMissing(result, n)
 	}(blackhole, results)
 
-	return <-blackhole
+	return <-blackhole, 0, 0 // TODO CHANGE LAST 2 RETURN VALUE
 }
 
 type groupChannelResult struct {
@@ -349,7 +360,14 @@ func min(a bhs.NodeID, b bhs.NodeID) bhs.NodeID {
 	return b
 }
 
-func max(a bhs.NodeID, b bhs.NodeID) bhs.NodeID {
+func max(a, b bhs.NodeID) bhs.NodeID {
+	if a < b {
+		return b
+	}
+	return a
+}
+
+func maxUint64(a, b uint64) uint64 {
 	if a < b {
 		return b
 	}

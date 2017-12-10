@@ -6,13 +6,13 @@ import (
 	"./bhs"
 )
 
-func runTest(hasWhiteBoards bool, algo func(r bhs.Ring) bhs.NodeID, t *testing.T) {
+func runTest(hasWhiteBoards bool, algo func(r bhs.Ring) (bhs.NodeID, uint64, uint64), t *testing.T) {
 	var size uint64 = 100
 
 	for i := bhs.NodeID(1); i < bhs.NodeID(size); i++ {
 		r := bhs.BuildRing(i, size, hasWhiteBoards)
 
-		if result := algo(r); result != i {
+		if result, _, _ := algo(r); result != i {
 			t.Errorf("Expected %v, got %d", i, result)
 		}
 	}
