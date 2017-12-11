@@ -268,6 +268,7 @@ func group(ring bhs.Ring) (bhs.NodeID, uint64, uint64) {
 	directions := [4]bhs.Direction{bhs.Left, bhs.Right, bhs.Left, bhs.Right}
 	blackhole := make(chan bhs.NodeID, 1)
 	results := make(chan groupChannelResponse, n-1)
+	complexities := make(chan uint64, 2)
 	var previousTrigger chan bool
 
 	for groupIndex := uint64(1); groupIndex <= groupSizes[Middle]; groupIndex++ { // loop q+a times
@@ -289,21 +290,21 @@ func group(ring bhs.Ring) (bhs.NodeID, uint64, uint64) {
 				oppositeDirection := bhs.GetOppositeDirection(agent.Direction)
 
 				ok, _ := agent.MoveUntil(agent.Direction, destinations[0])
-				agent.MoveUntil(oppositeDirection, destinations[1])
+				agent.MoveUntil(oppositeDirection, destinations[1]) // homebase
 				if (group == Left || group == Right) && iTrigger != nil {
 					iTrigger <- ok
 				}
 				if !ok {
-					results <- groupChannelResponse{false, groupChannelResult{}}
+					results <- groupChannelResponse{false, groupChannelResult{}, agent.Moves, group, groupIndex}
 					return
 				}
 				if ok, _ := agent.MoveUntil(oppositeDirection, destinations[2]); !ok {
-					results <- groupChannelResponse{false, groupChannelResult{}}
+					results <- groupChannelResponse{false, groupChannelResult{}, agent.Moves, group, groupIndex}
 					return
 				}
-				agent.MoveUntil(agent.Direction, destinations[3])
+				agent.MoveUntil(agent.Direction, destinations[3]) // homebase
 
-				results <- groupChannelResponse{true, groupChannelResult{agent.Direction, [2]bhs.NodeID{destinations[0], destinations[2]}}}
+				results <- groupChannelResponse{true, groupChannelResult{agent.Direction, [2]bhs.NodeID{destinations[0], destinations[2]}}, agent.Moves, group, groupIndex}
 			}(results, groupIndex, group, previousTrigger, currentTrigger)
 		}
 
@@ -311,10 +312,18 @@ func group(ring bhs.Ring) (bhs.NodeID, uint64, uint64) {
 	}
 
 	// kinda cheating, because a trigger is used to notify that the agent isn't coming back, so we could technically know where the black hole is
-	go func(blackhole chan<- bhs.NodeID, results <-chan groupChannelResponse) {
+	go func(blackhole chan<- bhs.NodeID, results <-chan groupChannelResponse, complexities chan<- uint64) {
+		maxTime := uint64(0)
+		moveComplexity := uint64(0)
 		result := []groupChannelResult{}
-		for returningAgent := uint64(0); returningAgent < n-1; returningAgent++ {
+		for agent := uint64(0); agent < n-1; agent++ {
 			groupChannelResponse := <-results
+			moveComplexity += groupChannelResponse.moves
+			if groupChannelResponse.group == TieBreaker {
+				maxTime = maxUint64(maxTime, groupChannelResponse.moves+(groupChannelResponse.groupIndex)*2) // tiebreakers get released later
+			} else {
+				maxTime = maxUint64(maxTime, groupChannelResponse.moves)
+			}
 			if !groupChannelResponse.success { // agent fell in black hole
 				continue
 			}
@@ -322,9 +331,11 @@ func group(ring bhs.Ring) (bhs.NodeID, uint64, uint64) {
 		}
 
 		blackhole <- findMissing(result, n)
-	}(blackhole, results)
+		complexities <- moveComplexity
+		complexities <- maxTime
+	}(blackhole, results, complexities)
 
-	return <-blackhole, 0, 0 // TODO CHANGE LAST 2 RETURN VALUE
+	return <-blackhole, <-complexities, <-complexities
 }
 
 type groupChannelResult struct {
@@ -333,8 +344,11 @@ type groupChannelResult struct {
 }
 
 type groupChannelResponse struct {
-	success bool
-	result  groupChannelResult
+	success    bool
+	result     groupChannelResult
+	moves      uint64
+	group      Group
+	groupIndex uint64
 }
 
 // Group is used for the alg GROUP
