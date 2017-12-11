@@ -160,57 +160,49 @@ func optTime(ring bhs.Ring) (bhs.NodeID, uint64, uint64) {
 func optTeamSize(ring bhs.Ring) (bhs.NodeID, uint64, uint64) {
 	const cautiousWalk = true
 	blackHole := make(chan bhs.NodeID, 1) // channel to send the index, buffered to one
-	ch := make(chan bool, 2)              // channel to send if both agents return successfully
+	moves := make(chan uint64, 2)         // channel to send the move cost for each agent
 	ringSize := bhs.NodeID(len(ring))     // logically wrong, but needed for type correctness
 	phaseOneNodesToExplore := (ringSize - 1) / 2
 
 	directions := [2]bhs.Direction{bhs.Left, bhs.Right}
 	phaseOneDestinations := [2]bhs.NodeID{phaseOneNodesToExplore, ringSize - phaseOneNodesToExplore}
 	for i := 0; i < len(directions); i++ {
-		go func(direction bhs.Direction, destination bhs.NodeID, ch chan<- bool, blackHole chan<- bhs.NodeID) {
+		go func(direction bhs.Direction, destination bhs.NodeID, blackHole chan<- bhs.NodeID, moves chan<- uint64) {
 			agent := bhs.NewAgent(direction, ring, cautiousWalk)
 			agent.ActAsSmall = false
 
 			ok, updateFound := agent.MoveUntil(agent.Direction, destination)
-			if !ok {
+			if !ok { // fell in black hole
+				moves <- agent.Moves
 				return
 			}
-			// if agent reaches this point, then returning to homebase will be successful unless update found
-			if updateFound {
-				if agent.ActAsSmall {
-					agent.Small(2, blackHole)
-					return
+			if updateFound { // if agent reaches this point, then returning to homebase will be successful unless update found
+				if agent.ActAsSmall { // new value from update
+					agent.Small(2, blackHole, moves)
+				} else {
+					agent.Big(blackHole, moves)
 				}
-				agent.Big(blackHole)
+				return
 			}
 			ok, updateFound = agent.MoveUntil(bhs.GetOppositeDirection(agent.Direction), agent.HomebaseNodeID)
-			ch <- ok
 			if updateFound {
-				if agent.ActAsSmall {
-					agent.Small(2, blackHole)
-					return
+				if agent.ActAsSmall { // new value from update
+					agent.Small(2, blackHole, moves)
+				} else {
+					agent.Big(blackHole, moves)
 				}
-				agent.Big(blackHole)
+				return
 			}
-			agent.LeaveUpdate(2)
+			agent.LeaveUpdate(2) // potentially nothing left to explore, could check in small? // todo
 			agent.ActAsSmall = true
-			agent.Small(2, blackHole)
+			agent.Small(2, blackHole, moves)
 
-		}(directions[i], phaseOneDestinations[i], ch, blackHole)
+		}(directions[i], phaseOneDestinations[i], blackHole, moves)
 	}
 
-	// only works if both agents come back
-	go func(ch <-chan bool) {
-		if ok := <-ch; !ok {
-			return
-		}
-		if ok := <-ch; !ok {
-			return
-		}
-		blackHole <- phaseOneNodesToExplore + 1
-	}(ch)
+	agent1Moves, agent2Moves := <-moves, <-moves
 
-	return <-blackHole, 0, 0 // TODO CHANGE LAST 2 RETURN VALUE
+	return <-blackHole, agent1Moves + agent2Moves, maxUint64(agent1Moves, agent2Moves)
 }
 
 func divide(ring bhs.Ring) (bhs.NodeID, uint64, uint64) {

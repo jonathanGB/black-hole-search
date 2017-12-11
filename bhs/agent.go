@@ -117,45 +117,59 @@ func (agent *Agent) MoveToLastExplored(direction Direction) {
 }
 
 // Small is used for optTeamSize
-func (agent *Agent) Small(remainingIterationsAsSmall uint8, blackHole chan<- NodeID) {
+func (agent *Agent) Small(remainingIterationsAsSmall uint8, blackHole chan<- NodeID, moves chan<- uint64) {
+	// first thing to do is see after leaving the update, if there's anything left to explore
+	if agent.UnexploredSet[0] == agent.UnexploredSet[1] {
+		agent.MoveUntil(GetOppositeDirection(agent.Direction), agent.HomebaseNodeID) // return home
+		moves <- agent.Moves
+		blackHole <- agent.UnexploredSet[0]
+		return // found black hole
+	}
+
+	// at this point, there are at least 2 unexplored items
 	if ok, _ := agent.MoveUntil(agent.Direction, agent.UnexploredSet[agent.Direction]); !ok { // visit one node
+		moves <- agent.Moves
 		return // fell in black hole
 	}
 	agent.MoveUntil(GetOppositeDirection(agent.Direction), agent.HomebaseNodeID)
 
 	remainingIterationsAsSmall--
-	agent.LeaveUpdate(remainingIterationsAsSmall)
-
-	if agent.UnexploredSet[0] == agent.UnexploredSet[1] {
-		blackHole <- agent.UnexploredSet[1]
-		return // found black hole
-	}
+	agent.LeaveUpdate(remainingIterationsAsSmall) // potentially nothing left to explore, could also check in big? // todo
 
 	switch remainingIterationsAsSmall {
 	case 1:
-		agent.Small(1, blackHole)
+		agent.Small(1, blackHole, moves)
 	case 0:
-		agent.Big(blackHole)
+		agent.Big(blackHole, moves)
 	}
 }
 
 // Big is used for optTeamSize
-func (agent *Agent) Big(blackHole chan<- NodeID) {
+func (agent *Agent) Big(blackHole chan<- NodeID, moves chan<- uint64) {
+	// first thing to do after seeing an update, check if there's anything left to explore
+	if agent.UnexploredSet[0] == agent.UnexploredSet[1] {
+		agent.MoveUntil(GetOppositeDirection(agent.Direction), agent.HomebaseNodeID) // return home
+		blackHole <- agent.UnexploredSet[0]
+		moves <- agent.Moves
+		return // found black hole
+	}
 	destination := [2]NodeID{agent.UnexploredSet[1] - 1, agent.UnexploredSet[0] + 1}  // Left and Right destinations
 	ok, updateFound := agent.MoveUntil(agent.Direction, destination[agent.Direction]) // visit all but one unexplored nodes
 	if !ok {
-		return
+		moves <- agent.Moves
+		return // fell in black hole
 	}
-	if !updateFound {
+	if !updateFound { // we explored all but one of the unexplored nodes, so the unexplored set is of size 1, which contains only the black hole
 		agent.MoveUntil(GetOppositeDirection(agent.Direction), agent.HomebaseNodeID) // return home
-		blackHole <- agent.UnexploredSet[1]
+		blackHole <- agent.UnexploredSet[0]
+		moves <- agent.Moves
 		return
 	}
-	if agent.ActAsSmall {
-		agent.Small(2, blackHole)
+	if agent.ActAsSmall { // an update was found! if it tells me to be small, then do small, otherwise act as big
+		agent.Small(2, blackHole, moves)
 		return
 	}
-	agent.Big(blackHole)
+	agent.Big(blackHole, moves)
 }
 
 // LeaveUpdate is used for optTeamSize
@@ -173,9 +187,10 @@ func (agent *Agent) LeaveUpdate(remainingIterationsAsSmall uint8) {
 	}
 	// getting the halfway point of the unexplored set, then finding the node halfway around the ring from it should be the center of the explored set
 	// cannot do negative modulo, because NodeID is an unsigned integer
-	ringSize := NodeID(len(agent.Ring) / 2)
-	middleOfUnexploredSetNodeID := (agent.UnexploredSet[1] - agent.UnexploredSet[0]) / 2
-	whiteboard.homebaseNodeID = (ringSize + middleOfUnexploredSetNodeID) % ringSize
+	ringSize := NodeID(len(agent.Ring))
+	middleOfUnexploredSetNodeID := agent.UnexploredSet[0] + (agent.UnexploredSet[1]-agent.UnexploredSet[0])/2
+	whiteboard.homebaseNodeID = (ringSize/2 + middleOfUnexploredSetNodeID) % ringSize
+	agent.HomebaseNodeID = whiteboard.homebaseNodeID
 	whiteboard.unexploredSet = agent.UnexploredSet
 
 	whiteboard.Unlock()
