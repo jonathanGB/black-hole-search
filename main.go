@@ -6,6 +6,7 @@ import (
 	"runtime"
 
 	"./bhs"
+	"github.com/fatih/color"
 )
 
 func main() {
@@ -43,10 +44,14 @@ func main() {
 				fmt.Printf("(%v)\t Expected %d\tgot %d", algorithms[i], blackHoleNodeID, returnedID)
 			}
 		}
+		yellow := color.New(color.FgYellow).SprintFunc()
+		red := color.New(color.FgRed).SprintFunc()
+		green := color.New(color.FgGreen).SprintFunc()
+		color.Set(color.FgBlue, color.Bold, color.Underline)
 		fmt.Printf("%v\n", runtime.FuncForPC(reflect.ValueOf(algorithms[i]).Pointer()).Name()) // hax0rz
-		fmt.Printf("Time\t min: %d | max: %d | avg: %d]\n", stats.time.min, stats.time.max, stats.time.average/(ringSize-1))
-		fmt.Printf("Move\t min: %d | max: %d | avg: %d]\n", stats.move.min, stats.move.max, stats.move.average/(ringSize-1))
-		fmt.Printf("\n\n")
+		color.Unset()
+		fmt.Printf("Time\t min: %s | avg: %s | max: %s]\n", green(stats.time.min), yellow(stats.time.average/(ringSize-1)), red(stats.time.max))
+		fmt.Printf("Move\t min: %s | avg: %s | max: %s]\n\n", green(stats.move.min), yellow(stats.move.average/(ringSize-1)), red(stats.move.max))
 	}
 }
 
