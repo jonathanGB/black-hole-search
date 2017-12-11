@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"reflect"
-	"runtime"
 
 	"./bhs"
 	"github.com/fatih/color"
@@ -19,17 +17,30 @@ func main() {
 		move measures
 		time measures
 	}
+	type bhsAlgo struct {
+		algoName      string
+		algo          func(bhs.Ring) (bhs.NodeID, uint64, uint64)
+		hasWhiteBoard bool
+	}
 	const ringSize = uint64(100)
 
-	algorithms := [5]interface{}{optAvgTime, optTime, optTeamSize, divide, group}
-	useWhiteBoard := [5]bool{false, false, true, true, false}
+	algorithms := []*bhsAlgo{
+		&bhsAlgo{"OptAvgTime", optAvgTime, false},
+		&bhsAlgo{"OptTime", optTime, false},
+		&bhsAlgo{"OptTeamSize", optTeamSize, true},
+		&bhsAlgo{"Divide", divide, true},
+		&bhsAlgo{"Group", group, false},
+	}
+	yellow := color.New(color.FgYellow).SprintFunc()
+	red := color.New(color.FgRed).SprintFunc()
+	green := color.New(color.FgGreen).SprintFunc()
 
 	fmt.Printf("Analysis for algorithms in a ring of size %d\n", ringSize)
-	for i := 0; i < len(algorithms); i++ {
+	for _, bhsAlgo := range algorithms {
 		var stats statistics
 		for blackHoleNodeID := bhs.NodeID(1); blackHoleNodeID < bhs.NodeID(ringSize); blackHoleNodeID++ {
-			ring := bhs.BuildRing(blackHoleNodeID, ringSize, useWhiteBoard[i])
-			returnedID, moveC, timeC := algorithms[i].(func(bhs.Ring) (bhs.NodeID, uint64, uint64))(ring)
+			ring := bhs.BuildRing(blackHoleNodeID, ringSize, bhsAlgo.hasWhiteBoard)
+			returnedID, moveC, timeC := bhsAlgo.algo(ring)
 
 			// compute stats
 			if blackHoleNodeID == 1 {
@@ -41,14 +52,12 @@ func main() {
 			stats = statistics{move: measures{minMove, maxMove, avgMove}, time: measures{minTime, maxTime, avgTime}}
 
 			if returnedID != blackHoleNodeID {
-				fmt.Printf("(%v)\t Expected %d\tgot %d", algorithms[i], blackHoleNodeID, returnedID)
+				fmt.Printf("(%s)\t Expected %d\tgot %d", bhsAlgo.algoName, blackHoleNodeID, returnedID)
 			}
 		}
-		yellow := color.New(color.FgYellow).SprintFunc()
-		red := color.New(color.FgRed).SprintFunc()
-		green := color.New(color.FgGreen).SprintFunc()
+
 		color.Set(color.FgBlue, color.Bold, color.Underline)
-		fmt.Printf("%v\n", runtime.FuncForPC(reflect.ValueOf(algorithms[i]).Pointer()).Name()) // hax0rz
+		fmt.Printf("%s\n", bhsAlgo.algoName)
 		color.Unset()
 		fmt.Printf("Time\t min: %s | avg: %s | max: %s]\n", green(stats.time.min), yellow(stats.time.average/(ringSize-1)), red(stats.time.max))
 		fmt.Printf("Move\t min: %s | avg: %s | max: %s]\n\n", green(stats.move.min), yellow(stats.move.average/(ringSize-1)), red(stats.move.max))
