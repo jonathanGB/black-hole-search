@@ -2,25 +2,52 @@ package main
 
 import (
 	"fmt"
+	"reflect"
+	"runtime"
 
 	"./bhs"
 )
 
 func main() {
-	bhNodeID, totalMoves, idealTime := optAvgTime(bhs.BuildRing(99, 100, false))
-	fmt.Printf("OptAvgTime found the black hole at index %d\n\tIdeal time: %d\tTotal moves: %d\n", bhNodeID, idealTime, totalMoves)
+	type measures struct {
+		min     uint64
+		max     uint64
+		average uint64
+	}
+	type statistics struct {
+		move measures
+		time measures
+	}
+	const ringSize = uint64(100)
 
-	bhNodeID, totalMoves, idealTime = optTime(bhs.BuildRing(99, 100, false))
-	fmt.Printf("OptAvgTime using (n-1) agents found the black hole at index %d\n\tIdeal time: %d\tTotal moves: %d\n", bhNodeID, idealTime, totalMoves)
+	algorithms := [5]interface{}{optAvgTime, optTime, optTeamSize, divide, group}
+	useWhiteBoard := [5]bool{false, false, true, true, false}
 
-	bhNodeID, _, _ = optTeamSize(bhs.BuildRing(99, 100, true))
-	fmt.Printf("OptTeamSize using 2 agents found the black hole at index %d\n", bhNodeID)
+	fmt.Printf("Analysis for algorithms in a ring of size %d\n", ringSize)
+	for i := 0; i < len(algorithms); i++ {
+		var stats statistics
+		for blackHoleNodeID := bhs.NodeID(1); blackHoleNodeID < bhs.NodeID(ringSize); blackHoleNodeID++ {
+			ring := bhs.BuildRing(blackHoleNodeID, ringSize, useWhiteBoard[i])
+			returnedID, moveC, timeC := algorithms[i].(func(bhs.Ring) (bhs.NodeID, uint64, uint64))(ring)
 
-	bhNodeID, _, _ = divide(bhs.BuildRing(80, 100, true))
-	fmt.Printf("Divide using 2 agents found the black hole at index %d\n", bhNodeID)
+			// compute stats
+			if blackHoleNodeID == 1 {
+				stats.move.min, stats.time.min = moveC, timeC // default min value
+			}
+			minMove, minTime := minUint64(stats.move.min, moveC), minUint64(stats.time.min, timeC)
+			maxMove, maxTime := maxUint64(stats.move.max, moveC), maxUint64(stats.time.max, timeC)
+			avgMove, avgTime := stats.move.average+moveC, stats.time.average+timeC
+			stats = statistics{move: measures{minMove, maxMove, avgMove}, time: measures{minTime, maxTime, avgTime}}
 
-	bhNodeID, _, _ = group(bhs.BuildRing(100, 101, false))
-	fmt.Printf("Group using (n-1) agents found the black hole at index %d\n", bhNodeID)
+			if returnedID != blackHoleNodeID {
+				fmt.Printf("(%v)\t Expected %d\tgot %d", algorithms[i], blackHoleNodeID, returnedID)
+			}
+		}
+		fmt.Printf("%v\n", runtime.FuncForPC(reflect.ValueOf(algorithms[i]).Pointer()).Name()) // hax0rz
+		fmt.Printf("Time\t min: %d | max: %d | avg: %d]\n", stats.time.min, stats.time.max, stats.time.average/(ringSize-1))
+		fmt.Printf("Move\t min: %d | max: %d | avg: %d]\n", stats.move.min, stats.move.max, stats.move.average/(ringSize-1))
+		fmt.Printf("\n\n")
+	}
 }
 
 // OptAvgTime runs the OptAvgTime algorithm
@@ -367,6 +394,13 @@ func max(a, b bhs.NodeID) bhs.NodeID {
 		return b
 	}
 	return a
+}
+
+func minUint64(a, b uint64) uint64 {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func maxUint64(a, b uint64) uint64 {
