@@ -211,12 +211,13 @@ func optTeamSize(ring bhs.Ring) (bhs.NodeID, uint64, uint64) {
 func divide(ring bhs.Ring) (bhs.NodeID, uint64, uint64) {
 	const cautiousWalk = true
 	blackhole := make(chan bhs.NodeID, 1)
-	ch := make(chan bool, 2)
-	ringSize := bhs.NodeID(len(ring)) // logically wrong, but needed for type correctness
+	oks := make(chan bool, 2)
+	moves := make(chan uint64, 2)
+	ringSize := bhs.NodeID(len(ring)) // logically wrong, but needed for type correctness)
 
 	directions := [2]bhs.Direction{bhs.Left, bhs.Right}
 	for i := 0; i < len(directions); i++ {
-		go func(direction bhs.Direction, ch chan<- bool, blackhole chan<- bhs.NodeID) {
+		go func(direction bhs.Direction, oks chan<- bool, blackhole chan<- bhs.NodeID, moves chan<- uint64) {
 			agent := bhs.NewAgent(direction, ring, cautiousWalk)
 			agent.ActAsSmall = false // for update catching
 			agent.UnexploredSet = [2]bhs.NodeID{1, ringSize - 1}
@@ -225,6 +226,7 @@ func divide(ring bhs.Ring) (bhs.NodeID, uint64, uint64) {
 				destination := equallyDivideUnexploredSet(agent.Direction, agent.UnexploredSet)
 				ok, updateFound := agent.MoveUntil(agent.Direction, destination)
 				if !ok {
+					moves <- agent.Moves
 					return
 				}
 
@@ -239,11 +241,12 @@ func divide(ring bhs.Ring) (bhs.NodeID, uint64, uint64) {
 
 			agent.MoveUntil(bhs.GetOppositeDirection(agent.Direction), 0) // go to homebase
 			blackhole <- agent.UnexploredSet[0]
-
-		}(directions[i], ch, blackhole)
+			moves <- agent.Moves
+		}(directions[i], oks, blackhole, moves)
 	}
 
-	return <-blackhole, 0, 0 // TODO CHANGE LAST 2 RETURN VALUE
+	movesAgent1, movesAgent2 := <-moves, <-moves
+	return <-blackhole, movesAgent1 + movesAgent2, maxUint64(movesAgent1, movesAgent2)
 }
 
 func equallyDivideUnexploredSet(direction bhs.Direction, unexploredSet [2]bhs.NodeID) bhs.NodeID {
