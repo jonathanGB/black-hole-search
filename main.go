@@ -10,8 +10,8 @@ func main() {
 	bhNodeID, totalMoves, idealTime := optAvgTime(bhs.BuildRing(99, 100, false))
 	fmt.Printf("OptAvgTime found the black hole at index %d\n\tIdeal time: %d\tTotal moves: %d\n", bhNodeID, idealTime, totalMoves)
 
-	bhNodeID, _, _ = optTime(bhs.BuildRing(99, 100, false))
-	fmt.Printf("OptAvgTime using (n-1) agents found the black hole at index %d\n", bhNodeID)
+	bhNodeID, totalMoves, idealTime = optTime(bhs.BuildRing(99, 100, false))
+	fmt.Printf("OptAvgTime using (n-1) agents found the black hole at index %d\n\tIdeal time: %d\tTotal moves: %d\n", bhNodeID, idealTime, totalMoves)
 
 	bhNodeID, _, _ = optTeamSize(bhs.BuildRing(99, 100, true))
 	fmt.Printf("OptTeamSize using 2 agents found the black hole at index %d\n", bhNodeID)
@@ -82,6 +82,7 @@ func optTime(ring bhs.Ring) (bhs.NodeID, uint64, uint64) {
 	const cautiousWalk = false
 	ringSize := bhs.NodeID(len(ring))     // logically wrong, but needed for type correctness
 	blackHole := make(chan bhs.NodeID, 1) // channel to send the index, buffered to one
+	agentMoves := make(chan uint64, 2)    // to keep track of the number of moves and therefore time of each agent
 
 	for id := bhs.NodeID(1); id <= ringSize; id++ {
 		results := make(chan bool, 1) // result from the agent
@@ -92,35 +93,36 @@ func optTime(ring bhs.Ring) (bhs.NodeID, uint64, uint64) {
 
 			if ok, _ := leftAgent.MoveUntil(bhs.Left, id-1); !ok { // go to the neighbour of i
 				ch <- false
+				agentMoves <- leftAgent.Moves
 				return
 			}
 
 			if ok, _ := leftAgent.MoveUntil(bhs.Right, (id+1)%ringSize); !ok { // go to the other neighbour or i
 				ch <- false
+				agentMoves <- leftAgent.Moves
 				return
 			}
 
 			if ok, _ := leftAgent.MoveUntil(bhs.Left, leftAgent.HomebaseNodeID); !ok {
 				ch <- false
+				agentMoves <- leftAgent.Moves
 				return
 			}
 
 			ch <- true
-		}(id, results)
-
-		// check for results from agents
-		go func(id bhs.NodeID, ch <-chan bool) {
-			if ok := <-ch; !ok {
-				return
-			}
-
-			// both agents have returned true, alert the index of the black hole
+			agentMoves <- leftAgent.Moves
 			blackHole <- id
 		}(id, results)
 	}
 
+	var moveComplexity, timeComplexity uint64
+	for i := bhs.NodeID(0); i < (ringSize - 1); i++ {
+		moves := <-agentMoves
+		moveComplexity += moves
+		timeComplexity = maxUint64(timeComplexity, moves)
+	}
 	// wait for the black hole to be found
-	return <-blackHole, 0, 0 // TODO CHANGE LAST 2 RETURN VALUE
+	return <-blackHole, moveComplexity, timeComplexity
 }
 
 func optTeamSize(ring bhs.Ring) (bhs.NodeID, uint64, uint64) {
