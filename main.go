@@ -1,11 +1,13 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 
-	"./bhs"
 	"./bhs/algorithms"
 	"./helpers"
+
+	"./bhs"
 	"github.com/fatih/color"
 )
 
@@ -25,15 +27,51 @@ type blackHoleSearchAlgorithm struct {
 }
 
 func main() {
-	const ringSize = uint64(100)
+
+	var ringSize, blackHoleNodeID uint64
+	var runAlgorithm int
+	var help bool
+	flag.Uint64Var(&ringSize, "ringSize", 100, "pass the value of the desired ring size... like so: go run main.go -ringSize 100")
+	flag.IntVar(&runAlgorithm, "alg", 0, "\n\t0: run all with stats\n\t1: Divide\n\t2: Group\n\t3: OptAvgTime\n\t4: OptTeamSize\n\t5: OptTime")
+	flag.Uint64Var(&blackHoleNodeID, "bh", 1, "must be used with alg flag")
+	flag.BoolVar(&help, "help", false, "-help")
+	flag.Parse()
+
+	if help {
+		fmt.Println("Running without any flags will default to -ringSize 100 -alg 0")
+		fmt.Println("\nUsage:")
+		fmt.Println("\t-alg\n\t\t0: run all\n\t\t1: Divide\n\t\t2: Group\n\t\t3: OptAvgTime\n\t\t4: OptTeamSize\n\t\t5: OptTime")
+		fmt.Println("\t-bh\n\t\twill set the node ID of the black hole (please don't set it to 0, as that's where agents start the search)")
+		fmt.Println("\t-ringSize\n\t\twill set the number of nodes in the ring")
+		fmt.Println("\t-help\n\t\twill display help information")
+		return
+	}
 
 	algorithms := []*blackHoleSearchAlgorithm{
-		&blackHoleSearchAlgorithm{"OptAvgTime", algorithms.OptAvgTime, false},
-		&blackHoleSearchAlgorithm{"OptTime", algorithms.OptTime, false},
-		&blackHoleSearchAlgorithm{"OptTeamSize", algorithms.OptTeamSize, true},
 		&blackHoleSearchAlgorithm{"Divide", algorithms.Divide, true},
 		&blackHoleSearchAlgorithm{"Group", algorithms.Group, false},
+		&blackHoleSearchAlgorithm{"OptAvgTime", algorithms.OptAvgTime, false},
+		&blackHoleSearchAlgorithm{"OptTeamSize", algorithms.OptTeamSize, true},
+		&blackHoleSearchAlgorithm{"OptTime", algorithms.OptTime, false},
 	}
+
+	if runAlgorithm == 0 {
+		allAlgorithms(ringSize, algorithms)
+		return
+	}
+
+	if ringSize <= blackHoleNodeID {
+		fmt.Printf("Node IDs go from 0-%d, so you can't put the black hole at index %d", ringSize-1, blackHoleNodeID)
+		return
+	}
+
+	index := runAlgorithm - 1
+	ring := bhs.BuildRing(bhs.NodeID(blackHoleNodeID), ringSize, algorithms[index].hasWhiteBoard)
+	returnedID, _, _ := algorithms[index].algorithm(ring)
+	fmt.Printf("(%s)\t Expected %d\tgot %d\t ring size %d", algorithms[index].algorithmName, blackHoleNodeID, returnedID, ringSize)
+}
+
+func allAlgorithms(ringSize uint64, algorithms []*blackHoleSearchAlgorithm) {
 	yellow := color.New(color.FgYellow).SprintFunc()
 	red := color.New(color.FgRed).SprintFunc()
 	green := color.New(color.FgGreen).SprintFunc()
