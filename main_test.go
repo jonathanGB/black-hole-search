@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"./bhs"
+	"./bhs/algorithms"
 )
 
 func runTest(hasWhiteBoards bool, algo func(r bhs.Ring) (bhs.NodeID, uint64, uint64), t *testing.T) {
@@ -19,66 +20,66 @@ func runTest(hasWhiteBoards bool, algo func(r bhs.Ring) (bhs.NodeID, uint64, uin
 }
 
 func TestOptAvgTime(t *testing.T) {
-	runTest(false, optAvgTime, t)
+	runTest(false, algorithms.OptAvgTime, t)
 }
 
 func benchmarkOptAvgTime(i uint64, b *testing.B) {
 	r := bhs.BuildRing(bhs.NodeID(i-1), i, false)
 
 	for n := 0; n < b.N; n++ {
-		optAvgTime(r)
+		algorithms.OptAvgTime(r)
 	}
 }
 func BenchmarkOptAvgTime10000(b *testing.B) { benchmarkOptAvgTime(1000, b) }
 
 func TestOptTime(t *testing.T) {
-	runTest(false, optTime, t)
+	runTest(false, algorithms.OptTime, t)
 }
 
 func benchmarkOptTime(i uint64, b *testing.B) {
 	r := bhs.BuildRing(bhs.NodeID(i-1), i, false)
 
 	for n := 0; n < b.N; n++ {
-		optTime(r)
+		algorithms.OptTime(r)
 	}
 }
 func BenchmarkOptTime10000(b *testing.B) { benchmarkOptTime(1000, b) }
 
 func TestOptTeamSize(t *testing.T) {
-	runTest(true, optTeamSize, t)
+	runTest(true, algorithms.OptTeamSize, t)
 }
 
 func benchmarkOptTeamSize(i uint64, b *testing.B) {
 	r := bhs.BuildRing(bhs.NodeID(i-1), i, true)
 
 	for n := 0; n < b.N; n++ {
-		optTeamSize(r)
+		algorithms.OptTeamSize(r)
 	}
 }
 func BenchmarkOptTeamSize10000(b *testing.B) { benchmarkOptTeamSize(1000, b) }
 
 func TestDivide(t *testing.T) {
-	runTest(true, divide, t)
+	runTest(true, algorithms.Divide, t)
 }
 
 func benchmarkDivide(i uint64, b *testing.B) {
 	r := bhs.BuildRing(bhs.NodeID(i-1), i, true)
 
 	for n := 0; n < b.N; n++ {
-		divide(r)
+		algorithms.Divide(r)
 	}
 }
 func BenchmarkDivide10000(b *testing.B) { benchmarkDivide(1000, b) }
 
 func TestGroup(t *testing.T) {
-	runTest(false, group, t)
+	runTest(false, algorithms.Group, t)
 }
 
 func benchmarkGroup(i uint64, b *testing.B) {
 	r := bhs.BuildRing(bhs.NodeID(i-1), i, true)
 
 	for n := 0; n < b.N; n++ {
-		group(r)
+		algorithms.Group(r)
 	}
 }
 func BenchmarkGroup10000(b *testing.B) { benchmarkGroup(1000, b) }
