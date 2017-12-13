@@ -32,7 +32,7 @@ func main() {
 	var runAlgorithm int
 	var help bool
 	flag.Uint64Var(&ringSize, "ringSize", 100, "pass the value of the desired ring size... like so: go run main.go -ringSize 100")
-	flag.IntVar(&runAlgorithm, "alg", 0, "\n\t0: run all with stats\n\t1: Divide\n\t2: Group\n\t3: OptAvgTime\n\t4: OptTeamSize\n\t5: OptTime")
+	flag.IntVar(&runAlgorithm, "alg", 100, "100: run all with stats\n\t0: Divide\n\t1: Group\n\t2: OptAvgTime\n\t3: OptTeamSize\n\t4: OptTime")
 	flag.Uint64Var(&blackHoleNodeID, "bh", 1, "must be used with alg flag")
 	flag.BoolVar(&help, "help", false, "-help")
 	flag.Parse()
@@ -55,20 +55,24 @@ func main() {
 		&blackHoleSearchAlgorithm{"OptTime", algorithms.OptTime, false},
 	}
 
-	if runAlgorithm == 0 {
+	if runAlgorithm == 100 {
 		allAlgorithms(ringSize, algorithms)
 		return
 	}
 
-	if ringSize <= blackHoleNodeID {
-		fmt.Printf("Node IDs go from 0-%d, so you can't put the black hole at index %d", ringSize-1, blackHoleNodeID)
+	if blackHoleNodeID >= ringSize || blackHoleNodeID < 1 {
+		fmt.Printf("BlackHoleIDs go from 1-%d, so you can't put the black hole at index %d", ringSize-1, blackHoleNodeID)
 		return
 	}
 
-	index := runAlgorithm - 1
-	ring := bhs.BuildRing(bhs.NodeID(blackHoleNodeID), ringSize, algorithms[index].hasWhiteBoard)
-	returnedID, _, _ := algorithms[index].algorithm(ring)
-	fmt.Printf("(%s)\t Expected %d\tgot %d\t ring size %d", algorithms[index].algorithmName, blackHoleNodeID, returnedID, ringSize)
+	if ringSize < 10 {
+		fmt.Printf("We have decided that the ring size must at least be 10, but you gave %d", ringSize)
+		return
+	}
+
+	ring := bhs.BuildRing(bhs.NodeID(blackHoleNodeID), ringSize, algorithms[runAlgorithm].hasWhiteBoard)
+	returnedID, _, _ := algorithms[runAlgorithm].algorithm(ring)
+	fmt.Printf("(%s)\t Expected %d\tgot %d\t ring size %d", algorithms[runAlgorithm].algorithmName, blackHoleNodeID, returnedID, ringSize)
 }
 
 func allAlgorithms(ringSize uint64, algorithms []*blackHoleSearchAlgorithm) {
